@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "VideoSceneRAG Frame Validation Report",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "video_id",
+    "source_sha256",
+    "pipeline_version",
+    "valid",
+    "mode",
+    "all_source_frames_exported",
+    "complete_atom_coverage",
+    "checks",
+    "metrics",
+    "errors",
+    "warnings",
+    "validated_at"
+  ],
+  "properties": {
+    "schema_version": { "const": "frame-validation-v1" },
+    "video_id": { "type": "string" },
+    "source_sha256": { "type": "string", "pattern": "^[a-fA-F0-9]{64}$" },
+    "pipeline_version": { "type": "string" },
+    "valid": { "type": "boolean" },
+    "mode": { "enum": ["atom_coverage", "all_frames"] },
+    "all_source_frames_exported": { "type": "boolean" },
+    "complete_atom_coverage": { "type": "boolean" },
+    "checks": { "type": "object" },
+    "metrics": { "type": "object" },
+    "errors": { "type": "array" },
+    "warnings": { "type": "array" },
+    "validated_at": { "type": "string" }
+  },
+  "additionalProperties": true
+}

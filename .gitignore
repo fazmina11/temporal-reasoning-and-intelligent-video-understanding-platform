@@ -21,6 +21,17 @@ data/audio/
 data/uploads/
 data/processed/audio/
 data/processed/frames/
+data/processed/clips/
+data/processed/visual_artifacts/
+data/processed/manifests/
+data/processed/transcripts/
+data/processed/boundaries/
+data/processed/atoms/
+data/processed/chunks/
+data/processed/semantic_chunks/
+data/processed/events/
+data/processed/chapters/
+data/processed/reports/
 
 # ChromaDB
 chroma_db/

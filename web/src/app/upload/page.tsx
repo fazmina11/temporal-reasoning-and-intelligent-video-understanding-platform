@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { Upload, FileVideo, AlertCircle, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8001";
+
 export default function UploadPage() {
   const router = useRouter();
   const [file, setFile] = useState<File | null>(null);
@@ -36,7 +38,7 @@ export default function UploadPage() {
     formData.append("file", file);
 
     try {
-      const response = await fetch("http://localhost:8001/upload", {
+      const response = await fetch(`${API_BASE}/upload`, {
         method: "POST",
         body: formData,
       });
@@ -55,7 +57,7 @@ export default function UploadPage() {
   const pollStatus = (videoId: string) => {
     const interval = setInterval(async () => {
       try {
-        const response = await fetch(`http://localhost:8001/status/${videoId}`);
+        const response = await fetch(`${API_BASE}/status/${videoId}`);
         if (!response.ok) throw new Error("Failed to fetch status");
         const data = await response.json();
         setStatus(data.status);

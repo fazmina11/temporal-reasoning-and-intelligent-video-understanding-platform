@@ -54,15 +54,12 @@ from pathlib import Path
 from typing import Any, Iterator
 
 try:
-    import google.generativeai as genai
-    print("Using google.generativeai package")
-except ImportError:
-    try:
-        import google.genai as genai
-        print("Using google.genai package (new)")
-    except ImportError:
-        import google.generativeai as genai
-        print("Falling back to google.generativeai package (deprecated)")
+    from google import genai
+    from google.genai import types as genai_types
+except ImportError as exc:
+    raise ImportError(
+        "google-genai is required. Install dependencies with: pip install -r requirement.txt"
+    ) from exc
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -82,7 +79,7 @@ except ImportError:
 
 # ── Configuration ──────────────────────────────────────────────────────────────
 
-GEMINI_MODEL          = "gemini-3-flash-preview"
+GEMINI_MODEL          = os.getenv("GEMINI_MODEL", "gemini-3-flash-preview")
 GEMINI_TEMPERATURE    = 0.7      # valid range: 0.0 - 2.0
 GEMINI_MAX_TOKENS     = 1024
 
@@ -100,8 +97,36 @@ GROUNDING_CHECK       = True    # set False to skip post-generation validation
 
 # ── Gemini client ──────────────────────────────────────────────────────────────
 
-def _get_gemini() -> genai.GenerativeModel:
+class GeminiClient:
+    """Small adapter around the supported google-genai SDK."""
+
+    def __init__(self, api_key: str, model_name: str) -> None:
+        self.client = genai.Client(api_key=api_key)
+        self.model_name = model_name
+        self.config = genai_types.GenerateContentConfig(
+            temperature=GEMINI_TEMPERATURE,
+            max_output_tokens=GEMINI_MAX_TOKENS,
+        )
+
+    def generate_content(self, contents: Any, stream: bool = False):
+        if stream:
+            return self.client.models.generate_content_stream(
+                model=self.model_name,
+                contents=contents,
+                config=self.config,
+            )
+        return self.client.models.generate_content(
+            model=self.model_name,
+            contents=contents,
+            config=self.config,
+        )
+
+
+def _get_gemini() -> GeminiClient:
     api_key = os.getenv("GEMINI_API_KEY")
+    if api_key:
+        log.info("Using Gemini model via google-genai: %s", GEMINI_MODEL)
+        return GeminiClient(api_key=api_key, model_name=GEMINI_MODEL)
     if not api_key:
         raise EnvironmentError(
             "GEMINI_API_KEY not set — add it to .env or export it."
@@ -123,7 +148,7 @@ def _get_gemini() -> genai.GenerativeModel:
     raise RuntimeError(f"Failed to initialize any Gemini model from: {model_names}")
 
 
-def _call_gemini(model: genai.GenerativeModel, prompt: str, stream: bool = False):
+def _call_gemini(model: GeminiClient, prompt: str, stream: bool = False):
     """Unified Gemini call with optional streaming."""
     if stream:
         return model.generate_content(prompt, stream=True)
@@ -190,7 +215,7 @@ Return ONLY the JSON object.
 
 def parse_query(
     raw_query: str,
-    model: genai.GenerativeModel,
+    model: GeminiClient,
     history: list[dict] | None = None,
 ) -> ParsedQuery:
     """
@@ -412,7 +437,7 @@ def generate_answer(
     question:    str,
     parsed:      ParsedQuery,
     scenes:      list[dict],
-    model:       genai.GenerativeModel,
+    model:       GeminiClient,
     history:     list[dict] | None = None,
     stream:      bool = False,
 ) -> str | Iterator:

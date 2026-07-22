@@ -3,7 +3,7 @@ scenedetect[opencv]
 pandas
 numpy
 faster-whisper
-google-generativeai
+google-genai
 python-dotenv
 fastapi
 uvicorn[standard]

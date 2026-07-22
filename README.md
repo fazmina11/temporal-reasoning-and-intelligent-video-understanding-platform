@@ -1,782 +1,1431 @@
-# VideoSceneRAG: AI-Powered Video Scene Understanding
+# VideoSceneRAG Advanced Roadmap
 
-An advanced Retrieval-Augmented Generation (RAG) system that transforms video content into an intelligent, queryable knowledge base. Ask natural language questions about any indexed video and receive precise, timestamped answers grounded in visual and audio content.
+VideoSceneRAG is a multimodal video understanding system. The current project
+already has a working prototype: video upload, scene extraction, transcription,
+Gemini-based visual enrichment, ChromaDB indexing, FastAPI endpoints, and a
+Next.js chat UI.
 
-## 📋 Table of Contents
+This README defines the target base architecture for turning the prototype into
+an advanced, industry-style video RAG system where a user can ask questions from
+any timeline, refer to vague memories, compare distant moments, and receive
+grounded answers with temporal evidence.
 
-- [Overview](#overview)
-- [Key Features](#key-features)
-- [Architecture](#architecture)
-- [System Design](#system-design)
-- [Data Flow](#data-flow)
-- [Installation](#installation)
-- [Usage](#usage)
-- [Project Structure](#project-structure)
-- [Configuration](#configuration)
-- [License](#license)
+The project should evolve from "scene captions in a vector DB" into a
+hierarchical video memory system:
 
----
-
-## 🎯 Overview
-
-VideoSceneRAG is a multimodal AI system that leverages computer vision, speech recognition, and large language models to understand video content at a semantic level. It enables users to:
-
-- **Ask questions** about video content using natural language
-- **Get timestamped answers** pinpointed to specific video scenes
-- **Retrieve clips** based on conceptual understanding, not just keyword matching
-- **Maintain conversation context** across multiple turns
-- **Verify hallucinations** by grounding answers in actual video content
-
-The system processes videos through a 4-phase pipeline that combines scene detection, audio transcription, multimodal embeddings, and LLM-based reasoning.
-
----
-
-## ✨ Key Features
-
-### Phase 1: Intelligent Frame Extraction
-- **Temporal Segmentation**: Content-aware scene detection via PySceneDetect
-- **Adaptive Bitrate Downsampling**: Reduces processing overhead for large videos
-- **Visual Deduplication**: Perceptual hashing eliminates near-duplicate frames
-- **Center-Frame Strategy**: Captures representative frame from each scene
-
-### Phase 2: Multimodal Content Analysis
-- **Automatic Speech Recognition**: Faster-Whisper extracts transcripts with word-level timestamps
-- **Visual Feature Extraction**: Deep learning models generate visual descriptions
-- **Temporal Alignment**: Audio and visual features aligned to scene boundaries
-- **Confidence Scoring**: Flags low-confidence transcriptions
-
-### Phase 3: Hybrid Retrieval Indexing
-- **Dual-Collection Strategy**: 
-  - Dense embeddings for semantic similarity (SentenceTransformer)
-  - Sparse collection for keyword/OCR text matching
-- **ChromaDB Integration**: Persistent vector storage with metadata preservation
-- **Reciprocal Rank Fusion**: Combines dense + sparse results intelligently
-- **Temporal Re-ranking**: Prioritizes contextually nearby scenes
-
-### Phase 4: NLP-Powered RAG Engine
-- **Intent Classification**: Routes queries to optimal retrieval strategy
-  - CONCEPT, TIMESTAMP, COMPARE, SUMMARISE, FOLLOWUP modes
-- **Query Rewriting**: LLM semantically expands user questions for better recall
-- **Grounded Answer Generation**: Gemini generates answers with inline citations
-- **Conversation Memory**: Multi-turn context awareness
-- **Hallucination Detection**: Validates answer factuality against source material
-- **Confidence Scoring**: Composite score from retrieval quality + grounding checks
-
----
-
-## 🏗️ Architecture
-
-### High-Level System Architecture
-
-```
-┌────────────────────────────────────────────────────────────────────┐
-│                         VideoSceneRAG System                        │
-└────────────────────────────────────────────────────────────────────┘
-
-                            INPUT: Video File
-                                    │
-                    ┌───────────────┴───────────────┐
-                    ▼                               ▼
-            ┌─────────────────┐          ┌──────────────────┐
-            │ PHASE 1: Frame  │          │ PHASE 1: Frame   │
-            │ Extraction &    │          │ Deduplication    │
-            │ Temporal Seg.   │          │ (pHash)          │
-            └────────┬────────┘          └────────┬─────────┘
-                     │                            │
-                     └────────────────┬───────────┘
-                                      ▼
-                    ┌──────────────────────────────┐
-                    │ Metadata: mapping.json       │
-                    │ (timestamps, scenes, frames) │
-                    └────────────────┬─────────────┘
-                                     │
-                ┌────────────────────┼────────────────────┐
-                ▼                    ▼                    ▼
-         ┌───────────────┐   ┌──────────────┐   ┌──────────────┐
-         │ PHASE 2A:     │   │ PHASE 2B:    │   │ PHASE 2B:    │
-         │ ASR (Whisper) │   │ Visual       │   │ OCR/Text     │
-         │ Transcription │   │ Description  │   │ Extraction   │
-         └───────┬───────┘   └──────┬───────┘   └──────┬───────┘
-                 │                  │                  │
-                 └──────────────────┬──────────────────┘
-                                    ▼
-                    ┌──────────────────────────────┐
-                    │ enriched_metadata.json:      │
-                    │ • combined_context (text)    │
-                    │ • scene_transcript           │
-                    │ • visual_description         │
-                    │ • on_screen_text             │
-                    │ • timestamps & confidence    │
-                    └────────────────┬─────────────┘
-                                     │
-            ┌────────────────────────┼────────────────────────┐
-            ▼                        ▼                        ▼
-      ┌──────────────┐        ┌──────────────┐        ┌──────────────┐
-      │ PHASE 3:     │        │ PHASE 3:     │        │ PHASE 3:     │
-      │ Dense        │        │ Sparse       │        │ Metadata     │
-      │ Embedding    │        │ Embedding    │        │ Normalization│
-      │ (STEncoder)  │        │ (Keywords)   │        │              │
-      └──────┬───────┘        └──────┬───────┘        └──────┬───────┘
-             │                       │                       │
-             └───────────────────────┼───────────────────────┘
-                                     ▼
-                    ┌──────────────────────────────┐
-                    │ ChromaDB Collections:        │
-                    │ • video_moments_dense        │
-                    │ • video_moments_sparse       │
-                    └────────────────┬─────────────┘
-                                     │
-                                     ▼
-                    ┌──────────────────────────────┐
-                    │ PHASE 4: RAG Query Engine    │
-                    │                              │
-                    │ • Intent Classification      │
-                    │ • Query Rewriting            │
-                    │ • Hybrid Retrieval (RRF)     │
-                    │ • Temporal Re-ranking        │
-                    │ • Grounded Answer Gen        │
-                    │ • Hallucination Detection    │
-                    │ • Confidence Scoring         │
-                    └────────────────┬─────────────┘
-                                     │
-                                     ▼
-                    ┌──────────────────────────────┐
-                    │ OUTPUT: Timestamped Answer   │
-                    │ with Citations & Confidence  │
-                    │ [Scene @ HH:MM:SS]           │
-                    └──────────────────────────────┘
+```text
+Video
+  -> Audio track, frames, clips, OCR, motion, transcript
+  -> Atomic chunks
+  -> Semantic events
+  -> Chapters
+  -> Entity/action/world memory
+  -> Multi-index ChromaDB collections
+  -> Agentic retrieval and temporal reasoning
+  -> Grounded answer with citations and confidence
 ```
 
-### Component Interaction Diagram
+## Current Runtime Fixes
 
-```
-                    ┌─────────────────┐
-                    │   main.py       │
-                    │   (CLI REPL)    │
-                    └────────┬────────┘
-                             │
-              ┌──────────────┼──────────────┐
-              │              │              │
-              ▼              ▼              ▼
-    ┌─────────────────┐ ┌────────────┐ ┌─────────────┐
-    │ phase1          │ │ phase2     │ │ phase3      │
-    │ _sampling       │ │ _audio.py  │ │ _indexing   │
-    │ .py             │ │ _visual.py │ │ .py         │
-    └────────┬────────┘ └────────┬───┘ └──────┬──────┘
-             │                   │             │
-             ▼                   ▼             ▼
-        ┌─────────┐         ┌──────────┐  ┌──────────┐
-        │ OpenCV  │         │ Whisper  │  │ ChromaDB │
-        │ Scene   │         │ SentTF   │  │ Chroma   │
-        │ Detect  │         │ Models   │  │ Client   │
-        └────┬────┘         └────┬─────┘  └────┬─────┘
-             │                   │             │
-             └───────────────────┼─────────────┘
-                                 │
-                                 ▼
-                    ┌─────────────────────┐
-                    │ VideoRetriever      │
-                    │ (phase3_indexing)   │
-                    └──────────┬──────────┘
-                               │
-                               ▼
-                    ┌─────────────────────┐
-                    │ phase4_rag.py       │
-                    │ • VideoRAG class    │
-                    │ • ConvMemory        │
-                    └──────────┬──────────┘
-                               │
-                               ▼
-                    ┌─────────────────────┐
-                    │ Gemini API          │
-                    │ (google.generativeai)│
-                    └─────────────────────┘
+### 1. Deprecated Gemini package warning
+
+The old package:
+
+```text
+google.generativeai
 ```
 
----
+is deprecated. The project should use:
 
-## 🔧 System Design
-
-### Data Model
-
-#### Frame & Scene Metadata (Phase 1)
-```json
-{
-  "scene_id": "scene_001",
-  "start_frame": 0,
-  "end_frame": 120,
-  "start_seconds": 0.0,
-  "end_seconds": 4.8,
-  "center_frame_path": "frames/scene_001_center.jpg",
-  "frame_count": 121,
-  "avg_brightness": 127.5,
-  "motion_intensity": 0.45,
-  "visual_hash": "abcd1234..."
-}
+```text
+google-genai
 ```
 
-#### Enriched Scene Record (Phase 2 → 3)
-```json
-{
-  "scene_id": "scene_001",
-  "timestamp": 0.0,
-  "duration": 4.8,
-  "combined_context": "A person is typing on a laptop...",
-  "scene_transcript": "Let me show you the code...",
-  "transcript_confidence": 0.95,
-  "visual_description": "Indoor office setting, bright lighting...",
-  "on_screen_text": ["Python", "def main()"],
-  "word_count": 15,
-  "frame_path": "frames/scene_001_center.jpg"
-}
-```
+Install dependencies:
 
-#### ChromaDB Collection Structure
-```
-Collection: video_moments_dense
-├── id: 'scene_001'
-├── embedding: [0.12, -0.45, 0.78, ...]  (384-dim SentenceTransformer)
-├── metadata: {all fields from enriched record}
-└── document: combined_context
-
-Collection: video_moments_sparse
-├── id: 'scene_001_sparse'
-├── embedding: [keyword TF-IDF sparse vector]
-├── metadata: {same as above}
-└── document: on_screen_text + visual description
-```
-
-### Retrieval Strategy
-
-#### Intent-Driven Routing
-
-| Intent | Strategy | Example |
-|--------|----------|---------|
-| **CONCEPT** | Hybrid Dense + Sparse (RRF) | "Find scenes with coding" |
-| **TIMESTAMP** | Temporal window lookup | "What happens at 2 minutes?" |
-| **COMPARE** | Dual sub-queries merged | "Compare scene A vs scene B" |
-| **SUMMARISE** | Broad top-K (k=15-20) | "Summarize the video" |
-| **FOLLOWUP** | Prior context + narrow query | "And then what?" |
-
-#### Hybrid Retrieval (RRF) Algorithm
-
-```
-Dense Results:    [scene_1(rank=1), scene_5(rank=2), scene_3(rank=3), ...]
-Sparse Results:   [scene_3(rank=1), scene_1(rank=2), scene_7(rank=3), ...]
-
-RRF Score Calculation:
-  score(d) = Σ 1 / (k + rank(d, i)) for each collection i
-  
-  RRF Rank 1: scene_1  = 1/(0.5+1) + 1/(0.5+2) = 0.67 + 0.40 = 1.07
-  RRF Rank 2: scene_3  = 1/(0.5+3) + 1/(0.5+1) = 0.25 + 0.67 = 0.92
-  RRF Rank 3: scene_5  = 1/(0.5+2) + 0            = 0.40 + 0    = 0.40
-  RRF Rank 4: scene_7  = 0 + 1/(0.5+3)            = 0 + 0.25    = 0.25
-
-Final Ranked: [scene_1, scene_3, scene_5, scene_7, ...]
-```
-
-### Confidence Scoring
-
-```
-confidence_score = (retrieval_score * α) + (grounding_ratio * β) + (relevance_boost * γ)
-
-where:
-  α, β, γ = tunable weights (typically 0.3, 0.5, 0.2)
-  retrieval_score = mean cosine similarity of top-k docs
-  grounding_ratio = (supported_claims / total_claims)
-  relevance_boost = 1.0 if high temporal coherence, else 0.8
-```
-
----
-
-## 📊 Data Flow
-
-### Complete Pipeline Flow
-
-```
-┌──────────────────────────────────────────────────────────────────┐
-│                      VIDEO INPUT (MP4)                           │
-└────────────────────────┬─────────────────────────────────────────┘
-                         │
-     ┌───────────────────▼───────────────────┐
-     │                                       │
-     │     PHASE 1: SCENE DETECTION          │
-     │     ─────────────────────────         │
-     │  1. Load video with OpenCV            │
-     │  2. PySceneDetect identifies cuts     │
-     │  3. Extract center frame per scene    │
-     │  4. Visual deduplication (pHash)      │
-     │  5. Compute motion metrics (SAD)      │
-     │                                       │
-     │  OUTPUT: mapping.json                 │
-     │  ├─ scene_id, timestamps              │
-     │  ├─ center_frame_path                 │
-     │  └─ motion scores                     │
-     └───────────────────┬───────────────────┘
-                         │
-     ┌───────────────────▼─────────────────────────────────┐
-     │                                                     │
-     │           PHASE 2A: ASR & TRANSCRIPTION             │
-     │           ──────────────────────────                │
-     │  1. Extract audio from video (MoviePy)             │
-     │  2. Faster-Whisper ASR on full audio track        │
-     │  3. Word-level timestamps & confidence             │
-     │  4. Align segments to scenes (temporal overlap)    │
-     │  5. Aggregate to scene-level transcripts           │
-     │                                                     │
-     │  OUTPUT: transcript.json (all ASR segments)        │
-     └───────────────────┬─────────────────────────────────┘
-                         │
-     ┌───────────────────▼──────────────────────────────────┐
-     │                                                      │
-     │          PHASE 2B: VISUAL & TEXT ANALYSIS            │
-     │          ──────────────────────────────              │
-     │  1. Load center frames from mapping.json            │
-     │  2. Vision model generates descriptions             │
-     │  3. OCR extracts on-screen text                     │
-     │  4. Build combined_context (text + audio + visual)  │
-     │  5. Confidence scoring (transcript_confidence)      │
-     │                                                      │
-     │  OUTPUT: enriched_metadata.json                      │
-     │  ├─ scene_id, timestamp, duration                   │
-     │  ├─ combined_context (multimodal text)              │
-     │  ├─ scene_transcript                                │
-     │  ├─ visual_description                              │
-     │  ├─ on_screen_text                                  │
-     │  └─ word_count, confidence                          │
-     └───────────────────┬──────────────────────────────────┘
-                         │
-     ┌───────────────────▼──────────────────────────────────┐
-     │                                                      │
-     │      PHASE 3A: EMBEDDING & INDEXING (Dense)         │
-     │      ────────────────────────────────────            │
-     │  1. Load enriched_metadata.json                      │
-     │  2. Initialize SentenceTransformer encoder           │
-     │  3. Embed combined_context → 384-dim vectors        │
-     │  4. Create ChromaDB collection (video_moments_dense)│
-     │  5. Upsert all scenes with metadata                 │
-     │                                                      │
-     │  ChromaDB Schema (Dense):                           │
-     │  ├─ id: scene_id                                    │
-     │  ├─ embedding: [384 dims]                           │
-     │  ├─ metadata: {all enriched fields}                 │
-     │  └─ document: combined_context                      │
-     └───────────────────┬──────────────────────────────────┘
-                         │
-     ┌───────────────────▼──────────────────────────────────┐
-     │                                                      │
-     │      PHASE 3B: EMBEDDING & INDEXING (Sparse)        │
-     │      ────────────────────────────────────            │
-     │  1. Extract keywords from on_screen_text + visual   │
-     │  2. Build TF-IDF sparse vectors                     │
-     │  3. Create ChromaDB collection (video_moments_sparse)
-     │  4. Upsert keyword-based documents                  │
-     │                                                      │
-     │  ChromaDB Schema (Sparse):                          │
-     │  ├─ id: scene_id_sparse                             │
-     │  ├─ embedding: [sparse TF-IDF]                      │
-     │  ├─ metadata: {same as dense}                       │
-     │  └─ document: on_screen_text + visual keywords      │
-     └───────────────────┬──────────────────────────────────┘
-                         │
-                    (INDEXING COMPLETE)
-                    (Ready for Queries)
-                         │
-     ┌───────────────────▼──────────────────────────────────┐
-     │                                                      │
-     │           PHASE 4: QUERY & ANSWER (Runtime)         │
-     │           ────────────────────────────────           │
-     │                                                      │
-     │    USER QUERY: "What happens at 2 minutes?"        │
-     │                    │                                │
-     │    1. INTENT CLASSIFICATION                         │
-     │       LLM analyzes query → TIMESTAMP intent         │
-     │       Extract temporal hints: "2 minutes" = 120s    │
-     │                    │                                │
-     │    2. QUERY REWRITING (optional)                    │
-     │       Semantic expansion, entity extraction         │
-     │                    │                                │
-     │    3. ADAPTIVE RETRIEVAL                            │
-     │       ├─ Dense query embedding of rewritten query   │
-     │       ├─ Search video_moments_dense (top-10)        │
-     │       ├─ Search video_moments_sparse (top-10)       │
-     │       ├─ Reciprocal Rank Fusion merge               │
-     │       └─ Temporal proximity re-rank (near 120s)     │
-     │                    │                                │
-     │    RETRIEVED: [scene_5(120s), scene_6(130s), ...]   │
-     │                    │                                │
-     │    4. GROUNDED ANSWER GENERATION                    │
-     │       ├─ Pack retrieved scenes into context prompt  │
-     │       ├─ LLM (Gemini) generates answer              │
-     │       ├─ Mandatory [Scene @ HH:MM:SS] citations     │
-     │       └─ Output: "At 2 minutes [Scene @ 02:00], ... │
-     │                    │                                │
-     │    5. HALLUCINATION DETECTION & VALIDATION          │
-     │       ├─ Extract claims from generated answer       │
-     │       ├─ Cross-check against retrieved context      │
-     │       ├─ Compute grounding_ratio                    │
-     │       └─ Flag unsupported claims                    │
-     │                    │                                │
-     │    6. CONFIDENCE SCORING                            │
-     │       score = (retrieval_sim × 0.3)                 │
-     │             + (grounding_ratio × 0.5)               │
-     │             + (temporal_coherence × 0.2)            │
-     │                    │                                │
-     │    7. CONVERSATION MEMORY UPDATE                    │
-     │       Store (query, answer, context) for next turn  │
-     │                    │                                │
-     └───────────────────┬──────────────────────────────────┘
-                         │
-     ┌───────────────────▼──────────────────────────────────┐
-     │  FINAL OUTPUT:                                       │
-     │  ┌──────────────────────────────────────────────────┐│
-     │  │ Answer: "At 2:00 [Scene @ 02:00], the speaker  ││
-     │  │           introduces the architecture..."        ││
-     │  │                                                  ││
-     │  │ Confidence: 0.92                                ││
-     │  │ Citations:                                       ││
-     │  │  • [Scene @ 02:00] — scene_5_center.jpg        ││
-     │  │  • [Scene @ 02:10] — scene_6_center.jpg        ││
-     │  └──────────────────────────────────────────────────┘│
-     │                                                      │
-     │  SESSION LOG: saved to data/logs/session_<ts>.jsonl││
-     │  {                                                  │
-     │   "timestamp": "2026-03-17T12:34:56",              │
-     │   "query": "What happens at 2 minutes?",           │
-     │   "intent": "TIMESTAMP",                           │
-     │   "answer": "At 2:00 [Scene @ 02:00]...",         │
-     │   "confidence": 0.92,                              │
-     │   "retrieved_scenes": ["scene_5", "scene_6"]       │
-     │  }                                                  │
-     └──────────────────────────────────────────────────────┘
-```
-
-### Multi-Turn Conversation Flow
-
-```
-┌────────────────────────────────────────────────────┐
-│         Conversation Memory (Sliding Window)        │
-│                                                    │
-│  Turn 1: Q: "What is this video about?"          │
-│          A: "This video explains..."              │
-│          Context: [scenes 1-3 retrieved]          │
-│                                                    │
-│  Turn 2: Q: "And what about the next part?"     │
-│          Context: Previous conversation + query   │
-│          A: "Following that, the video shows..." │
-│          Context: [scenes 3-5 retrieved]          │
-│                                                    │
-│  Turn n: Q: "Can you elaborate on that?"        │
-│          Context: Last N turns + query            │
-│          A: "In more detail, the scenes..."       │
-│          Context: [dynamic retrieval with memory] │
-└────────────────────────────────────────────────────┘
-```
-
----
-
-## 🚀 Installation
-
-### Prerequisites
-- Python 3.9+
-- FFmpeg (for audio extraction)
-- CUDA-capable GPU (optional but recommended)
-
-### Step 1: Clone the Repository
-```bash
-git clone https://github.com/Harish-0412/RAG-Enhanced-Video-Scene-Understanding.git
-cd VideoSceneRAG
-```
-
-### Step 2: Create Virtual Environment
-```bash
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-```
-
-### Step 3: Install Dependencies
-```bash
+```powershell
 pip install -r requirement.txt
 ```
 
-### Step 4: Configure API Keys
-Create a `.env` file in the repository root:
+The main RAG engine now uses the supported SDK import style:
+
+```python
+from google import genai
+```
+
+Required environment variables:
+
 ```env
-GEMINI_API_KEY=your_gemini_api_key_here
+GEMINI_API_KEY=your_new_key_here
+GEMINI_MODEL=gemini-3-flash-preview
 ```
 
-To get a Gemini API key: https://ai.google.dev/tutorials/setup
+If your API key was reported as leaked, generate a new Gemini API key and replace
+the old value in `.env`.
 
----
+### Implemented chunking foundation
 
-## 💻 Usage
+Phases C0/C1 and C3-C5 are now implemented. Each upload has a mature manifest,
+integer-millisecond timeline, merged multimodal boundary candidates, canonical
+non-overlapping atomic spans, and a fail-closed validation report.
 
-### Phase 1: Extract Frames & Scene Metadata
-```bash
-cd src
-python phase1_sampling.py
-```
-**Outputs:**
-- `data/processed/frames/` — extracted center frames
-- `data/processed/metadata/mapping.json` — scene metadata
+Run the chunking foundation for an existing manifest:
 
-### Phase 2: Transcribe Audio & Extract Visual Features
-```bash
-python phase2_audio.py
-python phase2_visual.py
-```
-**Outputs:**
-- `data/processed/metadata/transcript.json` — ASR transcripts
-- `data/processed/metadata/enriched_metadata.json` — multimodal features
-
-### Phase 3: Build Vector Index
-```bash
-python phase3_indexing.py
-```
-**Outputs:**
-- `chroma_db/` — ChromaDB vector store (persistent)
-- Console output showing collection statistics
-
-### Phase 4: Query the Video (Interactive REPL)
-```bash
-python main.py
+```powershell
+python -m src.pipeline.chunking_foundation --video-id <video_id>
 ```
 
-**Interactive Shell Commands:**
-```
-> What is the main topic of this video?
-> Tell me what happens at 3 minutes 45 seconds
-> Compare scene A with scene B
-> Summarize the entire video
-> /history          # Show previous queries
-> /stats            # Display session statistics
-> /help             # Show available commands
-> /quit             # Exit the program
+Run transcript attachment, visual artifacts, atom clips, semantic chunks, and
+chunk validation after C3-C5:
+
+```powershell
+python -m src.pipeline.evidence_foundation --video-id <video_id>
 ```
 
-### Batch Mode: Run Full Pipeline
-```bash
-python test_integration.py
+Run event building and hierarchy-native Chroma indexing:
+
+```powershell
+python -m src.pipeline.hierarchy_indexing --video-id <video_id>
 ```
 
----
+Verify the full base hierarchy after indexing:
 
-## 📁 Project Structure
-
-```
-VideoSceneRAG/
-├── README.md                          # This file
-├── requirement.txt                    # Python dependencies
-├── .env                               # API keys (add locally)
-│
-├── src/
-│   ├── main.py                        # Interactive CLI interface (Phase 4)
-│   ├── phase1_sampling.py             # Scene detection & frame extraction
-│   ├── phase2_audio.py                # Speech-to-text (Whisper)
-│   ├── phase2_visual.py               # Visual feature extraction
-│   ├── phase3_indexing.py             # Vector indexing (ChromaDB)
-│   ├── phase4_rag.py                  # RAG answer engine (Gemini)
-│   ├── utils.py                       # Shared utilities & helpers
-│   ├── mock_phase2_visual.py          # Mock visual features (for testing)
-│   ├── test_integration.py            # Full pipeline integration tests
-│   ├── test_phase3_search.py          # Retrieval testing
-│   └── __pycache__/                   # Compiled Python files
-│
-├── data/
-│   ├── input_videos/                  # Place your video(s) here
-│   │   └── demo_video.mp4
-│   │
-│   ├── audio/                         # Extracted audio tracks
-│   │
-│   ├── processed/
-│   │   ├── frames/                    # Extracted center frames (Phase 1)
-│   │   │   ├── scene_001_center.jpg
-│   │   │   ├── scene_002_center.jpg
-│   │   │   └── ...
-│   │   │
-│   │   ├── audio/                     # Processed audio files
-│   │   │
-│   │   └── metadata/                  # Intermediate & output metadata
-│   │       ├── mapping.json           # Phase 1: Scene boundaries & frames
-│   │       ├── transcript.json        # Phase 2A: Raw ASR output
-│   │       └── enriched_metadata.json # Phase 2B: Multimodal features
-│   │
-│   ├── results/                       # Final output
-│   │   └── multimodal_data.json       # Consolidated results
-│   │
-│   └── logs/                          # Session logs
-│       └── session_<timestamp>.jsonl  # Query/answer history
-│
-└── chroma_db/                         # Vector database (persistent)
-    └── chroma.sqlite3                 # Hybrid dense + sparse index
+```powershell
+python -m src.pipeline.hierarchy_validation --video-id <video_id>
 ```
 
----
+Hierarchy retrieval uses Hugging Face SentenceTransformer embeddings through
+ChromaDB. The default model is:
 
-## ⚙️ Configuration
-
-### Key Environment Variables
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `GEMINI_API_KEY` | ✅ Yes | Google Gemini API key for answer generation |
-
-### Tunable Hyperparameters
-
-#### Phase 1 (scene1_sampling.py)
-```python
-SCENE_THRESHOLD = 25.0        # PySceneDetect content threshold
-DOWNSAMPLE_FACTOR = 2         # Reduce resolution for speed
-VISUAL_HASH_THRESHOLD = 0.95  # pHash similarity (deduplication)
+```text
+BAAI/bge-base-en-v1.5
 ```
 
-#### Phase 3 (phase3_indexing.py)
-```python
-DEFAULT_TOP_K = 5             # Number of scenes to retrieve per collection
-BATCH_SIZE = 32               # Scenes per batch during indexing
-TEMPORAL_BOOST = 1.2          # Weight for temporal proximity
+Override it with:
+
+```powershell
+$env:HIERARCHY_EMBED_MODEL="BAAI/bge-base-en-v1.5"
 ```
 
-#### Phase 4 (phase4_rag.py)
-```python
-CONFIDENCE_WEIGHTS = {
-  'retrieval': 0.3,           # Weight for retrieval similarity
-  'grounding': 0.5,           # Weight for hallucination check
-  'temporal': 0.2             # Weight for temporal coherence
+Implementation details, schemas, defaults, API routes, and verification commands
+are documented in:
+
+```text
+docs/PHASE_C0_C1_MANIFEST_AND_TIMELINE.md
+docs/PHASE_C3_C5_BOUNDARIES_AND_ATOMS.md
+docs/PHASE_C6_AUDIO_AND_FRAME_EVIDENCE.md
+docs/PHASE_C6_C9_EVIDENCE_AND_SEMANTIC_CHUNKS.md
+docs/PHASE_C10_C12_EVENTS_INDEXING_RETRIEVAL.md
+docs/PHASE_C13_C25_PRODUCTION_AGENTIC_RETRIEVAL_AND_ANSWER_QUALITY.md
+```
+
+Frame evidence defaults to a 2-second timeline interval, with an atom-midpoint
+fallback only when a custom interval would otherwise leave an atom uncovered.
+This gives every atom clear visual evidence without exporting tens of thousands
+of near-duplicate source frames. Full archival extraction remains
+available with:
+
+```powershell
+python -m src.pipeline.frame_extraction --video-id <video_id> --all-frames
+```
+
+### 2. Port already in use: WinError 10048
+
+This error means another process is already using the port:
+
+```text
+Only one usage of each socket address is normally permitted
+```
+
+Check the port:
+
+```powershell
+netstat -ano | findstr :8001
+```
+
+Stop the process:
+
+```powershell
+taskkill /PID <PID_FROM_NETSTAT> /F
+```
+
+The frontend should use one backend port. Default local backend:
+
+```text
+http://localhost:8001
+```
+
+Optional frontend override:
+
+```env
+NEXT_PUBLIC_API_BASE_URL=http://localhost:8001
+```
+
+## How To Run Locally
+
+Open Terminal 1 for the backend:
+
+```powershell
+cd "C:\SideQuest\CN Project\RAG-Enhanced-Video-Scene-Understanding"
+$env:PYTHONUTF8="1"
+$env:TRANSFORMERS_NO_TF="1"
+$env:USE_TF="0"
+$env:PORT="8001"
+python -m uvicorn api:app --host 127.0.0.1 --port 8001
+```
+
+Open Terminal 2 for the frontend:
+
+```powershell
+cd "C:\SideQuest\CN Project\RAG-Enhanced-Video-Scene-Understanding\web"
+npm.cmd install
+npm.cmd run dev -- -p 3000
+```
+
+Open the app:
+
+```text
+http://127.0.0.1:3000/RAG-Enhanced-Video-Scene-Understanding
+```
+
+CLI mode:
+
+```powershell
+cd "C:\SideQuest\CN Project\RAG-Enhanced-Video-Scene-Understanding"
+$env:PYTHONUTF8="1"
+$env:TRANSFORMERS_NO_TF="1"
+$env:USE_TF="0"
+python src\main.py
+```
+
+## Why The Current Chunking Is Not Enough
+
+The current system mostly uses detected scenes and selected center frames. This
+is useful for a prototype, but it is weak for serious video understanding.
+
+Main limitations:
+
+- Visual cut detection does not equal semantic event segmentation.
+- One frame cannot represent motion, actions, gestures, or temporal change.
+- Transcript and visual content are not always aligned at word-level precision.
+- ChromaDB stores only simple scene records instead of hierarchical memory.
+- Retrieval is mostly one-pass instead of planner-driven and evidence verified.
+- Vague memory queries are hard because the user may not know the timestamp,
+  topic, slide number, or exact words.
+
+The advanced system must support questions like:
+
+```text
+"I remember he drew a blue graph but forgot why."
+"He compared cats and dogs. Where was that?"
+"What changed between the first architecture diagram and the final one?"
+"What did he say after explaining the loss curve?"
+"Summarize all moments where he talks about attention, even if he uses different wording."
+```
+
+## Target Product Vision
+
+The final system should act like a memory recovery and video reasoning assistant.
+
+User input can be:
+
+- exact timestamp
+- topic name
+- vague memory
+- object description
+- visual clue
+- spoken phrase
+- event sequence
+- comparison request
+- follow-up question
+
+The system should respond with:
+
+- answer
+- exact or approximate timestamp range
+- supporting clips/scenes
+- citations
+- confidence score
+- reasoning trace from the agents
+- warning if evidence is weak
+
+## Target Architecture
+
+```text
+Upload Video
+  |
+  v
+Media Ingestion
+  - validate video
+  - normalize codec
+  - extract audio
+  - create media manifest
+  |
+  v
+Multimodal Chunking
+  - scored multimodal boundary candidates
+  - canonical non-overlapping atomic spans
+  - semantic events and chapters
+  - dynamic context expansion during retrieval
+  |
+  v
+Multimodal Understanding
+  - ASR transcript
+  - OCR
+  - keyframes
+  - short clip VLM analysis
+  - objects/actions/interactions
+  - visual changes over time
+  |
+  v
+World Memory Construction
+  - entities
+  - actions
+  - relationships
+  - temporal links
+  - chapter summaries
+  |
+  v
+Vector and Metadata Storage
+  - ChromaDB dense indexes
+  - sparse text index
+  - entity/action index
+  - timeline graph metadata
+  |
+  v
+Agentic Query Pipeline
+  - Planner Agent
+  - Retriever Agent
+  - Evidence Verifier
+  - Temporal Reasoner
+  - Answer Generator
+  - Confidence Evaluator
+  |
+  v
+Grounded Answer
+```
+
+## Data Storage Philosophy
+
+Do not store only captions. Store a structured memory of the video.
+
+Every chunk must have:
+
+- identity
+- parent video
+- time range
+- transcript words
+- visual observations
+- OCR text
+- objects
+- actions
+- entities
+- relationships
+- previous/next links
+- parent chapter
+- source artifacts
+- embeddings
+- confidence
+
+The project should separate raw artifacts from derived indexes:
+
+```text
+data/
+  input_videos/
+  uploads/
+  processed/
+    audio/
+    frames/
+    clips/
+    transcripts/
+    ocr/
+    chunks/
+    events/
+    chapters/
+    world_memory/
+  logs/
+
+chroma_db/
+  persistent vector database
+
+schemas/
+  chunk.schema.json
+  event.schema.json
+  chapter.schema.json
+  world_memory.schema.json
+```
+
+## Canonical Chunk Schema
+
+Every chunk should eventually look like this:
+
+```json
+{
+  "video_id": "video_001",
+  "chunk_id": "video_001_chunk_000042",
+  "chunk_type": "atomic | event | chapter",
+  "parent_id": "video_001_event_000010",
+  "start_seconds": 245.2,
+  "end_seconds": 259.8,
+  "duration_seconds": 14.6,
+  "source": {
+    "video_path": "data/uploads/video_001.mp4",
+    "audio_path": "data/processed/audio/video_001.wav",
+    "clip_path": "data/processed/clips/video_001_chunk_000042.mp4",
+    "frame_paths": [
+      "data/processed/frames/video_001_chunk_000042_kf_001.jpg"
+    ]
+  },
+  "audio": {
+    "transcript": "The model compares cats and dogs using a simple feature table.",
+    "words": [
+      {"text": "model", "start": 246.1, "end": 246.5, "confidence": 0.91}
+    ],
+    "speaker": "speaker_1",
+    "asr_confidence": 0.88
+  },
+  "vision": {
+    "ocr_text": "Cats vs Dogs",
+    "objects": ["blue graph", "table", "slide"],
+    "actions": ["draws a graph", "points to comparison"],
+    "scene_description": "A slide compares cats and dogs with a blue graph on the right.",
+    "motion_summary": "The presenter highlights the graph, then switches to a table."
+  },
+  "world_memory": {
+    "entities": ["cats", "dogs", "blue graph"],
+    "concepts": ["classification", "feature comparison"],
+    "relations": [
+      {"subject": "cats", "relation": "compared_with", "object": "dogs"}
+    ],
+    "event_summary": "The lecturer uses cats and dogs to explain feature-based comparison."
+  },
+  "retrieval_text": "Visual: blue graph, cats vs dogs slide. Audio: feature comparison...",
+  "confidence": {
+    "asr": 0.88,
+    "vision": 0.82,
+    "alignment": 0.79
+  }
 }
-CONVERSATION_MEMORY_DEPTH = 5 # Number of turns to remember
 ```
 
----
+## ChromaDB Collection Design
 
-## 📊 Performance Characteristics
+Use multiple collections instead of one overloaded collection.
 
-| Metric | Value | Notes |
-|--------|-------|-------|
-| **Supported Video Length** | Up to 60 min | Size depends on available GPU/RAM |
-| **Scene Detection** | ~1-2s per minute | Depends on content complexity |
-| **ASR (Whisper)** | ~1-3s per minute | GPU: 5-10min/hr; CPU: 30min/hr |
-| **Embedding** | ~0.1s per scene | Batch processing with SentenceTransformer |
-| **Query Latency** | 1-3 seconds | Dense + sparse retrieval + LLM generation |
-| **Vector DB Size** | ~1MB per 100 scenes | ChromaDB with metadata |
+### 1. `video_chunks_text`
 
----
+Purpose:
 
-## 🔍 Troubleshooting
+- semantic transcript search
+- topic search
+- concept search
 
-### Issue: "GEMINI_API_KEY not found"
-**Solution:** Create `.env` file with your API key
-```env
-GEMINI_API_KEY=your_key_here
+Document text:
+
+```text
+transcript + summary + concepts + OCR
 ```
 
-### Issue: "No module named 'faster_whisper'"
-**Solution:** Reinstall dependencies
-```bash
-pip install --upgrade -r requirement.txt
+Metadata:
+
+- video_id
+- chunk_id
+- chunk_type
+- start_seconds
+- end_seconds
+- parent_event_id
+- chapter_id
+- speaker
+- confidence
+
+### 2. `video_chunks_vision`
+
+Purpose:
+
+- visual memory retrieval
+- "blue graph", "whiteboard", "diagram", "cat/dog table"
+
+Document text:
+
+```text
+clip VLM summary + objects + actions + OCR + visual changes
 ```
 
-### Issue: ChromaDB connection error
-**Solution:** Clear and rebuild the database
-```bash
-rm -rf chroma_db/
-python src/phase3_indexing.py
+Metadata:
+
+- video_id
+- chunk_id
+- frame_paths
+- clip_path
+- visual_confidence
+- objects
+- actions
+- diagram_type
+
+### 3. `video_chunks_audio`
+
+Purpose:
+
+- spoken phrase search
+- speaker-aware retrieval
+- timeline grounding from transcript
+
+Document text:
+
+```text
+word-level transcript + speaker + nearby transcript context
 ```
 
-### Issue: Out of memory during Phase 2
-**Solution:** Reduce video length or batch size
-```python
-# In phase2_audio.py
-BATCH_SIZE = 16  # Reduce from default 32
+Metadata:
+
+- video_id
+- chunk_id
+- start_seconds
+- end_seconds
+- word_count
+- asr_confidence
+- speaker
+
+### 4. `video_entities`
+
+Purpose:
+
+- cross-timeline memory
+- entity recurrence
+- vague memory resolution
+
+Document text:
+
+```text
+entity name + aliases + related events + descriptions
 ```
 
----
+Metadata:
 
-## 🛠️ Development
+- video_id
+- entity_id
+- entity_type
+- first_seen_seconds
+- last_seen_seconds
+- chunk_ids
+- aliases
 
-### Running Tests
-```bash
-cd src
-python test_integration.py      # Full pipeline test
-python test_phase3_search.py    # Retrieval system test
+### 5. `video_events`
+
+Purpose:
+
+- semantic event retrieval
+- chapter-level answers
+- timeline reasoning
+
+Document text:
+
+```text
+event summary + causal links + participating entities + transcript summary
 ```
 
-### Extending with Custom Models
-Each phase can be customized:
-- **Phase 1**: Swap PySceneDetect with other detectors
-- **Phase 2**: Use different ASR (Wav2Vec, Deepgram) or vision models
-- **Phase 3**: Extend embeddings (multi-modal transformers)
-- **Phase 4**: Use different LLMs (GPT-4, Claude)
+Metadata:
 
----
+- video_id
+- event_id
+- start_seconds
+- end_seconds
+- child_chunk_ids
+- previous_event_id
+- next_event_id
 
-## 📚 Technical Highlights
+### 6. `video_world_memory`
 
-### Advanced Techniques Implemented
+Purpose:
 
-1. **Perceptual Hashing (pHash)**: Near-duplicate frame detection
-2. **Reciprocal Rank Fusion (RRF)**: Hybrid search result merging
-3. **Temporal Re-ranking**: Context-aware result ordering
-4. **Entity Extraction**: NLP-driven query understanding
-5. **Grounding Checks**: Hallucination detection & mitigation
-6. **Confidence Scoring**: Composite quality metrics
-7. **Conversation Memory**: Multi-turn context preservation
+- higher-level reasoning across the whole video
+- "how did the explanation evolve?"
+- "where does he return to the same idea?"
 
-### Research Papers & References
-- **Scene Detection**: PySceneDetect algorithm (ContentDetector)
-- **Speech Recognition**: Faster Whisper optimization paper
-- **Embeddings**: Sentence-BERT (Sentence Transformers)
-- **Vector Search**: Reciprocal Rank Fusion algorithm
-- **RAG**: "Retrieval-Augmented Generation for Large Language Models" (Lewis et al., 2020)
+Document text:
 
----
+```text
+chapter memory + recurring ideas + temporal evolution + relations
+```
 
-## 📝 License
+Metadata:
 
-This project is licensed under the MIT License. See LICENSE file for details.
+- video_id
+- memory_id
+- chapter_ids
+- entity_ids
+- timeline_ranges
 
----
+## Advanced Chunking Strategy
 
-## 👨‍💻 Authors & Contributors
+The final system should use hierarchical chunking:
 
-- **Harish-0412** — Project Creator, Research & Lead Developer
-- **Dharsan6** — UI and UX
-- **AkashB-Glitch** - Backend and API
+### Level 1: Atomic windows
 
----
+Small canonical, non-overlapping spans used as precise evidence anchors.
 
-## 🙋 Support
+Recommended:
 
-For issues, feature requests, or questions:
-1. Open an Issue on GitHub: [GitHub Issues](https://github.com/Harish-0412/RAG-Enhanced-Video-Scene-Understanding/issues)
-2. Review the troubleshooting section above
-3. Check existing documentation in the code comments
+- 3 second minimum
+- 8 second target
+- 15 second maximum, with a 20 second hard maximum
+- align boundaries to transcript, pause, scene, and visual evidence
 
----
+Example:
 
-## 🎓 Educational Use
+```text
+atom_000001: 00:00.000-00:07.200
+atom_000002: 00:07.200-00:14.800
+atom_000003: 00:14.800-00:23.100
+```
 
-This project is ideal for learning:
-- **Computer Vision**: Scene detection, frame extraction
-- **NLP**: Query understanding, answer generation
-- **Information Retrieval**: Vector search, hybrid ranking
-- **System Design**: Multi-phase ML pipelines
-- **LLM Integration**: RAG patterns, prompt engineering
+Why:
 
----
+- supports exact timestamp answers
+- prevents duplicate evidence and unstable citations
+- works even when scene detection fails
+- allows neighboring context to be assembled dynamically for each query
 
-## 🔮 Future Enhancements
+### Level 2: Semantic events
 
-Planned features for future releases:
-- [ ] Streaming video support
-- [ ] Multi-language support
-- [ ] Real-time indexing (process video while playing)
-- [ ] Web UI dashboard
-- [ ] Batch query processing
-- [ ] Custom fine-tuned models
-- [ ] Advanced filtering (speaker identification, sentiment)
-- [ ] Video summarization
-- [ ] Interactive clip generation
+Events group atomic chunks by meaning.
 
----
+Signals:
 
-**Last Updated:** March 17, 2026
+- topic shift in transcript
+- slide/visual change
+- speaker transition
+- object/action change
+- VLM-detected activity change
+- embedding distance spike
+
+Example:
+
+```text
+event_010: 02:41:08-02:43:22
+summary: "Cats vs dogs comparison using blue graph and feature table."
+children: chunk_122, chunk_123, chunk_124
+```
+
+### Level 3: Chapters
+
+Chapters group events into larger explanation units.
+
+Recommended:
+
+- 2 to 8 minutes per chapter
+- generated after all events are known
+- includes recurring entities and key ideas
+
+### Level 4: World memory
+
+World memory connects repeated ideas across distant parts of the video.
+
+Example:
+
+```text
+blue graph appears at 02:41:16
+same concept returns at 02:58:40
+final summary appears at 03:04:12
+```
+
+## Memory Recovery AI
+
+Memory Recovery AI handles vague user memory instead of exact search.
+
+Example:
+
+```text
+User: I remember he drew a blue graph but forgot why.
+```
+
+Pipeline:
+
+```text
+1. Extract memory clues
+   - blue graph
+   - drew
+   - unknown topic
+
+2. Search visual memory
+   - video_chunks_vision
+   - video_entities
+   - video_events
+
+3. Expand clues
+   - blue graph -> chart, plot, curve, line graph
+   - drew -> sketch, annotate, highlight
+
+4. Retrieve candidates
+   - top visual chunks
+   - nearby transcript chunks
+   - parent events
+
+5. Temporal reconstruction
+   - what happened before
+   - what happened during
+   - what happened after
+
+6. Answer with uncertainty
+   - "This is likely the moment at 02:41:16..."
+   - include why the system believes that
+```
+
+The answer should include:
+
+- best timestamp
+- evidence clips
+- why it matched the memory
+- surrounding explanation
+- confidence
+
+## Agentic Video Understanding
+
+Do not use a single retrieval pass for complex questions.
+
+Target agent pipeline:
+
+```text
+Question
+  -> Planner Agent
+  -> Query Rewriter
+  -> Retriever Agent
+  -> Evidence Verifier
+  -> Temporal Reasoner
+  -> Answer Generator
+  -> Confidence Evaluator
+```
+
+### Planner Agent
+
+Role:
+
+- classify query type
+- decide which indexes to search
+- decide whether the query is vague, timestamped, visual, audio, comparative, or follow-up
+
+Output:
+
+```json
+{
+  "query_type": "memory_recovery",
+  "needs": ["vision_search", "nearby_transcript", "temporal_reasoning"],
+  "search_terms": ["blue graph", "drawn graph", "comparison"],
+  "expected_evidence": ["clip", "ocr", "transcript"]
+}
+```
+
+### Retriever Agent
+
+Role:
+
+- query multiple Chroma collections
+- perform hybrid retrieval
+- collect parent and neighboring chunks
+
+Searches:
+
+- text chunks
+- visual chunks
+- audio chunks
+- events
+- entities
+- world memory
+
+### Evidence Verifier
+
+Role:
+
+- reject weak matches
+- verify that answer claims are grounded
+- check retrieved timestamp range
+
+Questions:
+
+- Does the visual evidence match the user clue?
+- Does the transcript support the explanation?
+- Are there multiple candidate moments?
+
+### Temporal Reasoner
+
+Role:
+
+- connect before/during/after chunks
+- explain how concepts evolve
+- compare distant timeline ranges
+
+Examples:
+
+- "The graph appears at 02:41:16, but the reason is explained from 02:40:52 to 02:42:30."
+- "He returns to the same idea at 02:58:40."
+
+### Answer Generator
+
+Role:
+
+- generate final answer
+- cite timestamps
+- include concise explanation
+
+### Confidence Evaluator
+
+Role:
+
+- combine retrieval score, visual match score, audio confidence, temporal coherence, and verifier score
+
+Output:
+
+```json
+{
+  "confidence": 0.82,
+  "reason": "Visual clue matched blue graph and transcript explains comparison nearby.",
+  "weaknesses": ["OCR confidence was low"]
+}
+```
+
+## Video-Language Model Upgrade
+
+Current prototype uses selected frames. Advanced system should use short clips.
+
+Frame captioning sees:
+
+```text
+one image
+```
+
+Clip VLM sees:
+
+```text
+motion, action, gesture, transition, temporal change
+```
+
+Candidate models:
+
+- Qwen2.5-VL
+- Video-LLaMA
+- LLaVA-Video
+
+Implementation rule:
+
+- Phase 1 can keep frame captioning as fallback.
+- Phase 2 must add clip-level analysis.
+- Store both frame summaries and clip summaries.
+- Retrieval should prefer clip summaries for action and motion queries.
+
+## Video World Model
+
+The project should build a lightweight world model from extracted evidence.
+
+It does not need to be a huge neural world model at first. Start with structured
+latent memory:
+
+```json
+{
+  "entities": ["blue graph", "cats", "dogs"],
+  "actions": ["draws graph", "compares examples"],
+  "interactions": ["cats compared with dogs"],
+  "temporal_evolution": [
+    "introduces comparison",
+    "draws graph",
+    "explains why graph matters",
+    "returns to concept later"
+  ]
+}
+```
+
+This supports:
+
+- vague visual memory
+- long-range timeline relations
+- chapter-level summaries
+- event causality
+
+## Event Segmentation Transformer
+
+The current prototype uses visual cut detection. The advanced version should add
+semantic event segmentation.
+
+Start simple:
+
+- transcript embedding shifts
+- OCR title changes
+- VLM summary shifts
+- speaker pause boundaries
+- visual similarity changes
+
+Later upgrade:
+
+- train or fine-tune a transformer boundary detector
+- input: transcript tokens, frame embeddings, clip embeddings, OCR
+- output: semantic event boundary probability per second
+
+The first production-ready base does not need training. It should create the
+data structure so a transformer can replace the heuristic boundary detector
+without rewriting the whole project.
+
+## Development Phases
+
+### Phase 0: Stabilize the current project
+
+Owner: Developer A
+
+Tasks:
+
+- replace deprecated Gemini SDK usage
+- use one backend port
+- make `.env.example`
+- document port-kill commands
+- confirm backend starts
+- confirm frontend starts
+
+Done when:
+
+- no `google.generativeai` warning appears from the RAG path
+- only port `8001` is required for backend
+- `/docs` opens
+- `/upload` and `/chat` point to the same backend
+
+### Phase 1: Define contracts and folder structure
+
+Owner: Developer A
+
+Files:
+
+```text
+schemas/chunk.schema.json
+schemas/event.schema.json
+schemas/chapter.schema.json
+schemas/world_memory.schema.json
+src/contracts/
+```
+
+Tasks:
+
+- define chunk schema
+- define event schema
+- define Chroma metadata schema
+- define stable IDs
+- define artifact paths
+
+Developer B should not start UI assumptions until this phase is pushed and
+pulled.
+
+Push point:
+
+```powershell
+git checkout -b backend/phase-1-contracts
+git add schemas src/contracts README.md
+git commit -m "Define advanced video memory contracts"
+git push -u origin backend/phase-1-contracts
+```
+
+After merge, Developer B pulls:
+
+```powershell
+git checkout main
+git pull origin main
+```
+
+### Phase 2: Media ingestion and manifest
+
+Owner: Developer A
+
+Files:
+
+```text
+src/pipeline/ingest.py
+src/pipeline/media_manifest.py
+data/processed/manifests/
+```
+
+Tasks:
+
+- validate uploaded video
+- assign `video_id`
+- normalize path handling
+- extract metadata: fps, duration, resolution, codec
+- create `media_manifest.json`
+- extract full audio track
+
+Done when:
+
+- every uploaded video gets a manifest
+- downstream phases never guess file paths
+
+### Phase 3: Audio and transcript base
+
+Owner: Developer A
+
+Files:
+
+```text
+src/pipeline/audio.py
+src/pipeline/transcription.py
+data/processed/transcripts/
+```
+
+Tasks:
+
+- run Faster-Whisper
+- store word-level timestamps
+- store segment-level timestamps
+- preserve ASR confidence
+- support transcript-only retrieval
+
+Done when:
+
+- transcript is searchable by time
+- every word has start/end timestamp when available
+
+### Phase 4: Atomic chunker
+
+Owner: Developer A
+
+Files:
+
+```text
+src/pipeline/boundary_signals.py
+src/pipeline/atomic_spans.py
+src/pipeline/chunking_foundation.py
+data/processed/boundaries/
+data/processed/atoms/
+data/processed/reports/
+```
+
+Tasks:
+
+- extract duration, sentence, pause, scene-cut, and visual-difference signals
+- merge nearby evidence into scored boundary candidates
+- create canonical non-overlapping atomic spans
+- preserve boundary reasons and stable `atom_id` pointers
+- validate exact timeline coverage before downstream indexing
+
+Done when:
+
+- every video has one canonical atom list
+- the first atom starts at 0 and the last reaches the manifest duration
+- there are no gaps or overlaps
+- all previous/next pointers are valid
+- the machine-readable validation report has `valid: true`
+
+### Phase 5: Semantic event builder
+
+Owner: Developer A
+
+Files:
+
+```text
+src/pipeline/events.py
+data/processed/events/
+```
+
+Tasks:
+
+- group atomic chunks into events
+- detect topic shifts
+- detect visual/OCR shifts
+- connect previous/next event links
+- store parent-child relationships
+
+Done when:
+
+- every chunk belongs to an event
+- events have start/end timestamps
+- event summaries can be indexed
+
+### Phase 6: Clip-level visual understanding
+
+Owner: Developer A
+
+Files:
+
+```text
+src/pipeline/clip_vlm.py
+data/processed/clips/
+```
+
+Tasks:
+
+- generate short clips per chunk
+- run clip-level VLM
+- extract objects, actions, interactions, OCR, visual changes
+- store fallback frame captions
+
+Done when:
+
+- visual queries can match actions, not just static frames
+- every visual output is tied to a chunk_id
+
+### Phase 7: ChromaDB multi-index storage
+
+Owner: Developer A
+
+Files:
+
+```text
+src/indexing/chroma_store.py
+src/indexing/embeddings.py
+src/indexing/index_pipeline.py
+```
+
+Tasks:
+
+- create collections listed above
+- upsert text chunks
+- upsert visual chunks
+- upsert audio chunks
+- upsert events
+- upsert entities
+- support idempotent re-indexing
+
+Done when:
+
+- re-running indexing does not duplicate records
+- collection counts match chunk/event counts
+- retrieval can return chunk, event, and neighboring context
+
+### Phase 8: Agentic retrieval base
+
+Owner: Developer B
+
+Files:
+
+```text
+src/agents/planner.py
+src/agents/retriever_agent.py
+src/agents/evidence_verifier.py
+src/agents/temporal_reasoner.py
+src/agents/answer_generator.py
+src/agents/confidence_evaluator.py
+```
+
+Tasks:
+
+- create agent interfaces
+- define agent input/output JSON
+- make planner choose retrieval route
+- make verifier reject weak evidence
+- make temporal reasoner fetch before/after chunks
+
+Done when:
+
+- one query produces an explainable trace
+- each agent output is inspectable
+
+### Phase 9: Memory Recovery AI
+
+Owner: Developer B
+
+Files:
+
+```text
+src/retrieval/memory_recovery.py
+src/retrieval/query_expansion.py
+```
+
+Tasks:
+
+- detect vague memory queries
+- expand visual clues
+- search visual, entity, and event indexes
+- retrieve surrounding transcript
+- rank candidates by multimodal evidence
+
+Done when:
+
+- vague query returns likely moments
+- answer includes why the match was selected
+
+### Phase 10: API upgrade
+
+Owner: Developer B
+
+Files:
+
+```text
+api.py
+src/api_models.py
+```
+
+Tasks:
+
+- add `/videos`
+- add `/videos/{video_id}/status`
+- add `/videos/{video_id}/ask`
+- add `/videos/{video_id}/timeline`
+- add `/videos/{video_id}/evidence/{query_id}`
+- stream progress events
+
+Done when:
+
+- frontend never directly reads backend internals
+- API returns stable JSON contracts
+
+### Phase 11: Frontend upgrade
+
+Owner: Developer B
+
+Files:
+
+```text
+web/src/app/*
+web/src/components/*
+web/src/lib/api.ts
+```
+
+Tasks:
+
+- upload view
+- processing timeline view
+- video player with timestamp jumps
+- chat view
+- evidence panel
+- confidence panel
+- agent trace view
+
+Done when:
+
+- user can see why an answer was chosen
+- citations are clickable
+- vague memory answers show candidate moments
+
+### Phase 12: Evaluation suite
+
+Owner: Developer B
+
+Files:
+
+```text
+tests/
+eval/
+```
+
+Tasks:
+
+- create sample videos
+- create timestamp QA set
+- create vague memory QA set
+- create visual clue QA set
+- measure retrieval recall
+- measure answer grounding
+
+Done when:
+
+- every major retrieval change can be tested
+- no phase is considered complete without eval samples
+
+## Two-Person Team Workflow
+
+Use this workflow to avoid merge conflicts.
+
+### Roles
+
+Developer A owns:
+
+```text
+src/pipeline/
+src/indexing/
+src/retrieval/core retrievers
+schemas/
+data contracts
+ChromaDB storage
+```
+
+Developer B owns:
+
+```text
+api.py
+src/agents/
+src/retrieval/memory_recovery.py
+web/
+tests/
+eval/
+```
+
+Shared files:
+
+```text
+README.md
+requirement.txt
+.gitignore
+```
+
+Rule for shared files:
+
+- edit only when needed
+- announce before editing
+- pull before editing
+- keep changes small
+
+### Branch rules
+
+Never commit directly to `main`.
+
+Use branches:
+
+```text
+backend/phase-1-contracts
+backend/phase-4-chunking
+backend/phase-7-chroma-index
+agent/phase-8-agentic-retrieval
+frontend/phase-11-evidence-ui
+eval/phase-12-memory-recovery-tests
+fix/gemini-sdk-and-port
+```
+
+### Daily start
+
+Both developers must start with:
+
+```powershell
+git checkout main
+git pull origin main
+```
+
+Then create or update your branch:
+
+```powershell
+git checkout -b backend/phase-4-chunking
+```
+
+If branch already exists:
+
+```powershell
+git checkout backend/phase-4-chunking
+git merge main
+```
+
+### Before pushing
+
+Run checks:
+
+```powershell
+python -m compileall src api.py
+cd web
+npm.cmd run build
+```
+
+Then push:
+
+```powershell
+git add <your_files_only>
+git commit -m "Implement phase 4 atomic chunking"
+git push -u origin backend/phase-4-chunking
+```
+
+### Pull timing between two developers
+
+Use this dependency order:
+
+1. Developer A pushes and merges schema/contracts first.
+2. Developer B pulls main after schema merge.
+3. Developer A builds chunking and indexing.
+4. Developer B builds API and UI against the merged schemas.
+5. Developer A merges retrieval core.
+6. Developer B pulls retrieval core before building agents.
+
+Developer B should not build API responses from guessed fields. Wait for A to
+merge schema files first.
+
+Developer A should not edit UI files. If backend needs a UI field, update the
+schema and tell B.
+
+### Merge conflict prevention
+
+Avoid both editing these files at the same time:
+
+```text
+README.md
+requirement.txt
+api.py
+web/src/lib/api.ts
+```
+
+If conflict happens:
+
+```powershell
+git status
+git diff
+```
+
+Resolve manually, then:
+
+```powershell
+git add <resolved_files>
+git commit
+```
+
+Do not use:
+
+```powershell
+git reset --hard
+```
+
+unless both developers agree, because it can delete local work.
+
+### Commit size rule
+
+Good commit:
+
+```text
+Implement atomic chunk schema
+```
+
+Bad commit:
+
+```text
+Update everything
+```
+
+Each commit should represent one idea.
+
+## Suggested Build Order For This Team
+
+Sprint 1:
+
+- A: Phase 0 and Phase 1
+- B: frontend API cleanup and basic UI polish after pulling A's contracts
+
+Sprint 2:
+
+- A: Phase 2, Phase 3, Phase 4
+- B: upload/status UI and eval data format
+
+Sprint 3:
+
+- A: Phase 5, Phase 6, Phase 7
+- B: agent interfaces and API response contracts
+
+Sprint 4:
+
+- A: retrieval expansion and temporal neighbor retrieval
+- B: Memory Recovery AI and evidence panel
+
+Sprint 5:
+
+- A: optimize indexing and storage
+- B: evaluation suite and demo workflow
+
+## Definition Of Done For The Advanced Base
+
+The base is complete when:
+
+- each uploaded video gets a `video_id`
+- full audio is extracted
+- transcript has timestamped words
+- canonical atoms cover the full video without gaps or overlaps
+- events group chunks semantically
+- ChromaDB has multiple collections
+- each vector record has stable metadata
+- retriever can fetch neighboring chunks
+- vague memory query can retrieve visual candidates
+- answer includes timestamp, evidence, and confidence
+- frontend uses one backend port
+- README and schemas are in sync
+
+## References
+
+Gemini API Python examples use the supported SDK:
+
+- https://ai.google.dev/api/generate-content
+- https://ai.google.dev/gemini-api/docs/generate-content/get-started

@@ -7,6 +7,8 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8001";
+
 type Message = {
   id: string;
   role: "user" | "assistant";
@@ -149,7 +151,7 @@ export default function ChatPage() {
     setIsLoading(true);
 
     try {
-      const response = await fetch("http://localhost:8000/ask", {
+      const response = await fetch(`${API_BASE}/ask`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ video_id: videoId, query: input }),
@@ -221,7 +223,7 @@ export default function ChatPage() {
           <div className="flex-1 flex items-center justify-center p-4 bg-gradient-to-b from-slate-900 to-black">
             <video
               ref={videoRef}
-              src={`http://localhost:8000/data/uploads/${videoId}.${videoExt}`}
+              src={`${API_BASE}/data/uploads/${videoId}.${videoExt}`}
               onTimeUpdate={handleTimeUpdate}
               onLoadedMetadata={handleLoadedMetadata}
               onClick={togglePlay}

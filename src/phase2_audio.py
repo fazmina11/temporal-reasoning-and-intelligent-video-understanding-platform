@@ -163,7 +163,11 @@ def extract_audio_segments(
 
 # ── Step A: Full-video ASR ─────────────────────────────────────────────────────
 
-def transcribe_video(video_path: str, force: bool = False) -> list[dict]:
+def transcribe_video(
+    video_path: str,
+    force: bool = False,
+    transcript_path: str | None = None,
+) -> list[dict]:
     """
     ASR (Automatic Speech Recognition) via Faster-Whisper.
 
@@ -183,9 +187,10 @@ def transcribe_video(video_path: str, force: bool = False) -> list[dict]:
     List of segment dicts.
     """
     # ── Resume check ─────────────────────────────────────────────────────
-    if not force and Path(TRANSCRIPT_PATH).exists():
+    output_path = Path(transcript_path or TRANSCRIPT_PATH)
+    if not force and output_path.exists():
         log.info("⏩  transcript.json found — skipping ASR (use force=True to rerun)")
-        with open(TRANSCRIPT_PATH, "r", encoding="utf-8") as fh:
+        with output_path.open("r", encoding="utf-8") as fh:
             return json.load(fh)
 
     from faster_whisper import WhisperModel
@@ -236,11 +241,11 @@ def transcribe_video(video_path: str, force: bool = False) -> list[dict]:
         segments.append(record)
         log.debug("[%.2f → %.2f]  %s", seg.start, seg.end, seg.text.strip())
 
-    ensure_dirs([str(Path(TRANSCRIPT_PATH).parent)])
-    with open(TRANSCRIPT_PATH, "w", encoding="utf-8") as fh:
+    ensure_dirs([str(output_path.parent)])
+    with output_path.open("w", encoding="utf-8") as fh:
         json.dump(segments, fh, indent=4, ensure_ascii=False)
 
-    log.info("✅  ASR complete — %d segments → %s", len(segments), TRANSCRIPT_PATH)
+    log.info("ASR complete: %d segments -> %s", len(segments), output_path)
     return segments
 
 

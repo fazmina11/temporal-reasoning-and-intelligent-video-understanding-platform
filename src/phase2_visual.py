@@ -82,6 +82,19 @@ SKIP_IF_CAPTIONED = True
 
 def _get_gemini_model():
     """Initialise and return the Gemini GenerativeModel."""
+    from google import genai
+
+    api_key = os.getenv("GEMINI_API_KEY")
+    if not api_key:
+        raise EnvironmentError(
+            "GEMINI_API_KEY is not set. "
+            "Add it to your .env file or export it as an environment variable."
+        )
+
+    client = genai.Client(api_key=api_key)
+    log.info("Using Gemini vision model via google-genai: %s", GEMINI_MODEL)
+    return client, GEMINI_MODEL, "new"
+
     try:
         # Try the newer google.genai package first
         import google.genai as genai
@@ -111,7 +124,7 @@ def _get_gemini_model():
         
     except ImportError:
         # Fallback to the deprecated google.generativeai
-        import google.generativeai as genai
+        raise ImportError("google-genai is required; install dependencies from requirement.txt")
         
         api_key = os.getenv("GEMINI_API_KEY")
         if not api_key:
