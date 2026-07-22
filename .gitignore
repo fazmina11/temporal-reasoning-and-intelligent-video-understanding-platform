@@ -23,6 +23,9 @@ data/processed/audio/
 data/processed/frames/
 data/processed/clips/
 data/processed/visual_artifacts/
+data/processed/ocr/
+data/processed/speakers/
+data/processed/audio_events/
 data/processed/manifests/
 data/processed/transcripts/
 data/processed/boundaries/
@@ -32,6 +35,7 @@ data/processed/semantic_chunks/
 data/processed/events/
 data/processed/chapters/
 data/processed/reports/
+data/processed/retrieval_traces/
 
 # ChromaDB
 chroma_db/

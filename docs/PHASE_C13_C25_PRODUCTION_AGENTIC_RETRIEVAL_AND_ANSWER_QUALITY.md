@@ -168,6 +168,8 @@ Trace contents:
 
 ## Phase C13: Typed Contracts And Workflow State
 
+Status: implemented.
+
 ### Purpose
 
 Create the contract layer before adding more retrieval logic.
@@ -193,6 +195,15 @@ src/pipeline/agentic/state.py
 src/pipeline/agentic/trace_repository.py
 ```
 
+Implemented files:
+
+```text
+src/pipeline/agentic/contracts.py
+src/pipeline/agentic/state.py
+src/pipeline/agentic/trace_repository.py
+tests/test_agentic_contracts.py
+```
+
 ### Done Criteria
 
 - Every `/ask` response validates against a schema.
@@ -202,6 +213,8 @@ src/pipeline/agentic/trace_repository.py
 - Unit tests cover schema validation failures.
 
 ## Phase C14: Conversation Resolver And Query Understanding
+
+Status: implemented.
 
 ### Purpose
 
@@ -265,6 +278,14 @@ src/pipeline/agentic/conversation_resolver.py
 src/pipeline/agentic/query_understanding.py
 ```
 
+Implemented files:
+
+```text
+src/pipeline/agentic/conversation_resolver.py
+src/pipeline/agentic/query_understanding.py
+tests/test_agentic_query_understanding.py
+```
+
 ### Done Criteria
 
 - Follow-up references resolve when prior citations exist.
@@ -274,6 +295,8 @@ src/pipeline/agentic/query_understanding.py
 - Unknown classification does not block retrieval.
 
 ## Phase C15: Scope Router And Out-Of-Scope Policy
+
+Status: implemented.
 
 ### Purpose
 
@@ -312,6 +335,21 @@ The question appears to concern the video, but enough supporting evidence was no
 src/pipeline/agentic/scope_router.py
 ```
 
+Implemented files:
+
+```text
+src/pipeline/agentic/scope_router.py
+tests/test_agentic_scope_router.py
+```
+
+API integration:
+
+```text
+api.py
+```
+
+`/ask` now creates a retrieval trace, stores conversation resolution, stores query understanding, stores the scope decision, and returns a typed response outcome. `/ask-debug` returns the trace together with the typed response.
+
 ### Done Criteria
 
 - Unrelated questions do not get fake video citations.
@@ -321,6 +359,8 @@ src/pipeline/agentic/scope_router.py
 - The scope decision is stored in the trace.
 
 ## Phase C16: Retrieval Planner And Retriever Adapters
+
+Status: implemented.
 
 ### Purpose
 
@@ -389,6 +429,66 @@ src/pipeline/agentic/retrievers/chroma_dense.py
 src/pipeline/agentic/retrievers/local_visual.py
 ```
 
+Implemented files:
+
+```text
+src/pipeline/agentic/retrieval_planner.py
+src/pipeline/agentic/retrievers/base.py
+src/pipeline/agentic/retrievers/exact_timeline.py
+src/pipeline/agentic/retrievers/chroma_dense.py
+src/pipeline/agentic/retrievers/local_visual.py
+src/pipeline/agentic/retrievers/local_sparse.py
+```
+
+Implemented retrievers:
+
+- Exact timeline lookup.
+- Dense transcript retrieval.
+- Dense semantic chunk retrieval.
+- Dense event retrieval.
+- Visual chunk retrieval.
+- Sparse local keyword retrieval.
+- Working local OCR, speaker-turn, and audio-event retrievers backed by canonical timestamped artifacts.
+- Clip/action and entity/world-memory adapter slots retain safe empty behavior until their model-backed indexes are built.
+
+### OCR, Speaker, And Audio Artifact Foundation
+
+The previously empty OCR, speaker, and audio-event adapters are now backed by ingestion artifacts:
+
+```text
+data/processed/ocr/{video_id}.json
+data/processed/speakers/{video_id}.json
+data/processed/audio_events/{video_id}.json
+```
+
+Build all three after C6-C10 has created frames, transcript atoms, semantic chunks, and events:
+
+```powershell
+python -m src.pipeline.modality_foundation --video-id <video_id>
+```
+
+For a known speaker count, provide it explicitly. This is recommended for lectures and interviews because it prevents acoustic over-segmentation:
+
+```powershell
+python -m src.pipeline.modality_foundation --video-id <video_id> --expected-speakers 1
+```
+
+OCR uses Tesseract at ingestion time and stores token boxes, confidence, frame IDs, integer timestamps, atom IDs, parent chunk IDs, and parent event IDs. Configure a non-standard executable with `TESSERACT_PATH`.
+
+Speaker processing computes acoustic spectral features for timestamped ASR segments, clusters them into stable speaker IDs, limits turns to 30 seconds, aligns turns to chunks, and writes speaker IDs back into canonical atoms. `--expected-speakers` is the preferred control when the source format is known.
+
+Audio-event processing uses overlapping analysis windows but emits canonical non-overlapping timeline intervals. Its deterministic baseline recognizes `speech`, `silence`, `transient_sound`, `music_or_tonal_audio`, and `background_audio`, and stores confidence plus acoustic measurements for later model upgrades.
+
+The query-understanding and planner layers now route:
+
+```text
+slide/on-screen text -> ocr_sparse
+speaker/lecturer questions -> speaker
+music/silence/sound questions -> audio_event
+```
+
+These local retrievers normalize their output to `CandidateEvidence`, so fusion, reranking, verification, temporal reasoning, citations, claim verification, and confidence calibration work without a special answer path.
+
 ### Done Criteria
 
 - The planner selects retrieval based on query type.
@@ -398,6 +498,8 @@ src/pipeline/agentic/retrievers/local_visual.py
 - Plans are bounded by top-k and context limits.
 
 ## Phase C17: Parallel Retrieval, Fusion, Reranking, And Deduplication
+
+Status: implemented.
 
 ### Purpose
 
@@ -468,6 +570,17 @@ src/pipeline/agentic/reranker.py
 src/pipeline/agentic/temporal_deduplicator.py
 ```
 
+Implemented files:
+
+```text
+src/pipeline/agentic/retrieval_orchestrator.py
+src/pipeline/agentic/candidate_fusion.py
+src/pipeline/agentic/reranker.py
+src/pipeline/agentic/temporal_deduplicator.py
+```
+
+The orchestrator now records per-retriever candidate counts and warnings. Fusion uses weighted reciprocal rank fusion plus exact-term, entity, visual, temporal, and stale-index signals. Deduplication collapses near-duplicate timeline windows using temporal IoU.
+
 ### Done Criteria
 
 - Multiple retrievers can run for one query.
@@ -477,6 +590,8 @@ src/pipeline/agentic/temporal_deduplicator.py
 - Candidate counts and scores are written to the trace.
 
 ## Phase C18: Evidence Verifier And Answerability Gate
+
+Status: implemented.
 
 ### Purpose
 
@@ -528,6 +643,22 @@ src/pipeline/agentic/evidence_verifier.py
 src/pipeline/agentic/answerability_gate.py
 ```
 
+Implemented files:
+
+```text
+src/pipeline/agentic/evidence_verifier.py
+src/pipeline/agentic/answerability_gate.py
+tests/test_agentic_retrieval_gate.py
+```
+
+API integration:
+
+```text
+api.py
+```
+
+`/ask` now runs the C16-C18 retrieval gate before answer generation. If evidence is not answerable, the API returns a typed not-found or policy response instead of asking the answer model to improvise.
+
 ### Done Criteria
 
 - No answer generation happens without sufficient verified evidence.
@@ -536,6 +667,8 @@ src/pipeline/agentic/answerability_gate.py
 - Evidence rejection reasons are counted in the trace.
 
 ## Phase C19: Corrective Retrieval And Temporal Reasoning
+
+Status: implemented.
 
 ### Purpose
 
@@ -570,6 +703,16 @@ src/pipeline/agentic/corrective_retrieval.py
 src/pipeline/agentic/temporal_reasoner.py
 ```
 
+Implemented files:
+
+```text
+src/pipeline/agentic/corrective_retrieval.py
+src/pipeline/agentic/temporal_reasoner.py
+tests/test_agentic_answer_pipeline.py
+```
+
+The retrieval gate now performs bounded corrective retrieval when answerability is uncertain. Temporal reasoning identifies the primary moment, expands previous/next atoms inside the configured context window, attaches parent chunk/event context, records repeated-concept signals, and exposes conflicting or distant evidence instead of hiding it.
+
 ### Done Criteria
 
 - Uncertain retrieval can perform one safe corrective loop.
@@ -578,6 +721,8 @@ src/pipeline/agentic/temporal_reasoner.py
 - Conflicting evidence is not hidden.
 
 ## Phase C20: Evidence Packet And Grounded Generation
+
+Status: implemented.
 
 ### Purpose
 
@@ -615,6 +760,16 @@ src/pipeline/agentic/evidence_packet.py
 src/pipeline/agentic/answer_generator.py
 ```
 
+Implemented files:
+
+```text
+src/pipeline/agentic/evidence_packet.py
+src/pipeline/agentic/answer_generator.py
+tests/test_agentic_answer_pipeline.py
+```
+
+The answer generator now receives a compact evidence packet containing only verified evidence, citation IDs, visual references, temporal context, missing-evidence notes, and allowed answer style. Gemini failures fall back to a local grounded answer that preserves citations and metadata.
+
 ### Done Criteria
 
 - Gemini 503 does not break response metadata.
@@ -623,6 +778,8 @@ src/pipeline/agentic/answer_generator.py
 - Generated answer references only packet evidence.
 
 ## Phase C21: Claim Verifier And Answer Revision
+
+Status: implemented.
 
 ### Purpose
 
@@ -656,6 +813,15 @@ If verification fails:
 src/pipeline/agentic/claim_verifier.py
 ```
 
+Implemented files:
+
+```text
+src/pipeline/agentic/claim_verifier.py
+tests/test_agentic_answer_pipeline.py
+```
+
+Generated answers are checked for citation validity, timestamp consistency, and unsupported claims. If verification fails, the generator performs one bounded revision using supported evidence; if it still fails, the response is downgraded through the typed answer-quality metadata.
+
 ### Done Criteria
 
 - Every video claim maps to at least one citation.
@@ -664,6 +830,8 @@ src/pipeline/agentic/claim_verifier.py
 - Timestamp claims match citation windows.
 
 ## Phase C22: Confidence Calibration
+
+Status: implemented.
 
 ### Purpose
 
@@ -690,6 +858,15 @@ Do not use only LLM self-confidence.
 ```text
 src/pipeline/agentic/confidence_calibrator.py
 ```
+
+Implemented files:
+
+```text
+src/pipeline/agentic/confidence_calibrator.py
+tests/test_agentic_answer_pipeline.py
+```
+
+Confidence is now calculated from retrieval, reranking, verified evidence count, citation coverage, claim support, timeline consistency, modality coverage, corrective retrieval usage, and fallback usage. `/ask-debug` exposes these features in the retrieval trace.
 
 ### Done Criteria
 

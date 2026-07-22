@@ -218,6 +218,9 @@ def create_media_manifest(
         processed_root / "frames" / video_id,
         processed_root / "clips" / video_id,
         processed_root / "visual_artifacts",
+        processed_root / "ocr",
+        processed_root / "speakers",
+        processed_root / "audio_events",
         processed_root / "events",
         processed_root / "chapters",
         processed_root / "reports",
@@ -292,6 +295,9 @@ def create_media_manifest(
             "frame_index_path": str(repo_root / "data" / "processed" / "frames" / video_id / "frames.json"),
             "clips_dir": str(repo_root / "data" / "processed" / "clips" / video_id),
             "visual_artifacts_path": str(repo_root / "data" / "processed" / "visual_artifacts" / f"{video_id}.json"),
+            "ocr_path": str(repo_root / "data" / "processed" / "ocr" / f"{video_id}.json"),
+            "speakers_path": str(repo_root / "data" / "processed" / "speakers" / f"{video_id}.json"),
+            "audio_events_path": str(repo_root / "data" / "processed" / "audio_events" / f"{video_id}.json"),
             "boundaries_path": str(repo_root / "data" / "processed" / "boundaries" / f"{video_id}.json"),
             "semantic_chunks_path": str(repo_root / "data" / "processed" / "semantic_chunks" / f"{video_id}.json"),
             "events_path": str(repo_root / "data" / "processed" / "events" / f"{video_id}.json"),
@@ -337,6 +343,18 @@ def load_manifest(*, repo_root: Path, video_id: str) -> dict[str, Any]:
     artifacts.setdefault(
         "visual_artifacts_path",
         str(repo_root / "data" / "processed" / "visual_artifacts" / f"{video_id}.json"),
+    )
+    artifacts.setdefault(
+        "ocr_path",
+        str(repo_root / "data" / "processed" / "ocr" / f"{video_id}.json"),
+    )
+    artifacts.setdefault(
+        "speakers_path",
+        str(repo_root / "data" / "processed" / "speakers" / f"{video_id}.json"),
+    )
+    artifacts.setdefault(
+        "audio_events_path",
+        str(repo_root / "data" / "processed" / "audio_events" / f"{video_id}.json"),
     )
     artifacts.setdefault(
         "chunk_validation_path",

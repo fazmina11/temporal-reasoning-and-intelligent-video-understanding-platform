@@ -55,6 +55,33 @@ from src.pipeline.hierarchy_indexing import index_hierarchy
 from src.pipeline.hierarchy_rag import HierarchyVideoRAG
 from src.pipeline.json_artifacts import read_json
 from src.pipeline.media_assets import extract_normalized_audio
+from src.pipeline.agentic.contracts import (
+    AnswerQuality,
+    AskRequest,
+    AskResponse,
+    Citation,
+    Outcome,
+    RetrievalTrace,
+    SourceType,
+    model_to_dict,
+)
+from src.pipeline.agentic.conversation_resolver import resolve_conversation_references
+from src.pipeline.agentic.query_understanding import understand_query
+from src.pipeline.agentic.scope_router import ScopeAction, route_scope
+from src.pipeline.agentic.trace_repository import TraceRepository
+from src.pipeline.agentic.retrieval_planner import create_retrieval_plan
+from src.pipeline.agentic.retrieval_orchestrator import RetrievalOrchestrator
+from src.pipeline.agentic.candidate_fusion import fuse_candidates
+from src.pipeline.agentic.reranker import rerank_candidates
+from src.pipeline.agentic.temporal_deduplicator import deduplicate_temporal_candidates
+from src.pipeline.agentic.evidence_verifier import verify_evidence
+from src.pipeline.agentic.answerability_gate import evaluate_answerability
+from src.pipeline.agentic.corrective_retrieval import create_corrective_plan, should_retry
+from src.pipeline.agentic.temporal_reasoner import build_temporal_context
+from src.pipeline.agentic.evidence_packet import build_evidence_packet
+from src.pipeline.agentic.answer_generator import GroundedAnswerGenerator
+from src.pipeline.agentic.claim_verifier import verify_claims
+from src.pipeline.agentic.confidence_calibrator import calibrate_confidence
 
 app = FastAPI(title="VideoSceneRAG API")
 
@@ -77,15 +104,12 @@ app.mount("/data", StaticFiles(directory="data"), name="data")
 # Global state to track processing status
 processing_status: Dict[str, Dict[str, Any]] = {}
 
-class QueryRequest(BaseModel):
-    video_id: str
-    query: str
+class QueryRequest(AskRequest):
+    pass
 
-class QueryResponse(BaseModel):
-    answer: str
-    timestamp: float
-    confidence: float
-    citations: List[Dict[str, Any]]
+
+class QueryResponse(AskResponse):
+    pass
 
 @app.post("/upload")
 async def upload_video(background_tasks: BackgroundTasks, file: UploadFile = File(...)):
@@ -466,71 +490,575 @@ def get_hierarchy_rag():
         hierarchy_rag_engine = HierarchyVideoRAG(repo_root=REPO_ROOT)
     return hierarchy_rag_engine
 
+
+def _source_type(value: Any) -> SourceType:
+    normalized = str(value or "").strip().lower()
+    mapping = {
+        "atom": SourceType.ATOM,
+        "atomic_span": SourceType.ATOM,
+        "chunk": SourceType.SEMANTIC_CHUNK,
+        "semantic_chunk": SourceType.SEMANTIC_CHUNK,
+        "visual_chunk": SourceType.VISUAL_CHUNK,
+        "event": SourceType.EVENT,
+        "ocr": SourceType.OCR,
+        "speaker_turn": SourceType.SPEAKER_TURN,
+        "audio_event": SourceType.AUDIO_EVENT,
+        "general_knowledge": SourceType.GENERAL_KNOWLEDGE,
+        "system": SourceType.SYSTEM,
+    }
+    return mapping.get(normalized, SourceType.UNKNOWN)
+
+
+def _citation_from_result(raw: dict[str, Any], index: int, video_id: str) -> Citation:
+    start_ms = raw.get("start_ms")
+    end_ms = raw.get("end_ms")
+    if start_ms is None and raw.get("start_seconds") is not None:
+        start_ms = int(float(raw["start_seconds"]) * 1000)
+    if end_ms is None and raw.get("end_seconds") is not None:
+        end_ms = int(float(raw["end_seconds"]) * 1000)
+    return Citation(
+        citation_id=str(raw.get("citation_id") or raw.get("id") or f"S{index + 1}"),
+        source_type=_source_type(raw.get("source_type")),
+        source_id=str(
+            raw.get("source_id")
+            or raw.get("atom_id")
+            or raw.get("chunk_id")
+            or raw.get("event_id")
+            or f"source_{index + 1}"
+        ),
+        video_id=str(raw.get("video_id") or video_id),
+        start_ms=start_ms,
+        end_ms=end_ms,
+        start_seconds=raw.get("start_seconds"),
+        end_seconds=raw.get("end_seconds"),
+        timestamp=raw.get("timestamp"),
+        text=raw.get("text") or raw.get("transcript_text") or raw.get("summary"),
+        visual_summary=raw.get("visual_summary"),
+        parent_chunk_id=raw.get("parent_chunk_id"),
+        parent_event_id=raw.get("parent_event_id"),
+        confidence=raw.get("confidence"),
+    )
+
+
+def _primary_timestamp(citations: list[Citation]) -> float:
+    for citation in citations:
+        if citation.start_seconds is not None:
+            return float(citation.start_seconds)
+        if citation.start_ms is not None:
+            return citation.start_ms / 1000.0
+    return 0.0
+
+
+def _response_from_hierarchy_result(
+    *,
+    request: QueryRequest,
+    result: dict[str, Any],
+    trace_id: str,
+    fallback_used: bool = False,
+) -> QueryResponse:
+    citations = [_citation_from_result(c, i, request.video_id) for i, c in enumerate(result.get("citations") or [])]
+    timestamp = _primary_timestamp(citations)
+    primary = citations[0] if citations else None
+    confidence = max(0.0, min(1.0, float(result.get("confidence", 0.0) or 0.0)))
+    outcome = Outcome.GROUNDED_ANSWER if citations and confidence >= 0.35 else Outcome.VIDEO_EVIDENCE_NOT_FOUND
+    if outcome == Outcome.VIDEO_EVIDENCE_NOT_FOUND and citations:
+        outcome = Outcome.PARTIAL_ANSWER
+    return QueryResponse(
+        outcome=outcome,
+        answer=result.get("answer") or "I could not find enough reliable evidence in this video to answer that question.",
+        video_id=request.video_id,
+        query=request.query,
+        answer_mode=request.answer_mode,
+        timestamp=timestamp,
+        start_ms=primary.start_ms if primary else None,
+        end_ms=primary.end_ms if primary else None,
+        source_id=primary.source_id if primary else None,
+        source_type=primary.source_type if primary else SourceType.UNKNOWN,
+        parent_event_id=primary.parent_event_id if primary else None,
+        confidence=confidence,
+        citations=citations,
+        answer_quality=AnswerQuality(
+            grounded=bool(citations),
+            has_timestamp=timestamp > 0,
+            has_citations=bool(citations),
+            uses_verified_evidence=bool(citations),
+            fallback_used=fallback_used,
+            low_confidence_reason=None if confidence >= 0.35 else "weak_or_missing_evidence",
+            quality_score=confidence,
+        ),
+        trace_id=trace_id,
+    )
+
+
+def _response_from_agentic_generation(
+    *,
+    request: QueryRequest,
+    trace_id: str,
+    generation: dict[str, Any],
+    evidence_packet: dict[str, Any],
+    temporal_context: dict[str, Any],
+    claim_verification: dict[str, Any],
+    confidence: dict[str, Any],
+    answerability: dict[str, Any],
+) -> QueryResponse:
+    citations = [
+        Citation(
+            citation_id=item["citation_id"],
+            source_type=_source_type(item.get("source_type")),
+            source_id=str(item["source_id"]),
+            video_id=item.get("video_id") or request.video_id,
+            start_ms=item.get("start_ms"),
+            end_ms=item.get("end_ms"),
+            start_seconds=(item.get("start_ms") or 0) / 1000,
+            end_seconds=(item.get("end_ms") or 0) / 1000,
+            parent_chunk_id=item.get("parent_chunk_id"),
+            parent_event_id=item.get("parent_event_id"),
+            text=next(
+                (
+                    evidence.get("text")
+                    for evidence in evidence_packet.get("verified_evidence", [])
+                    if evidence.get("citation_id") == item["citation_id"]
+                ),
+                None,
+            ),
+        )
+        for item in evidence_packet.get("citations", [])
+    ]
+    timestamp = _primary_timestamp(citations)
+    primary = citations[0] if citations else None
+    score = float(confidence.get("score", 0.0))
+    unsupported = int(claim_verification.get("unsupported_claim_count", 0) or 0)
+    decision = answerability.get("decision")
+    outcome = Outcome.GROUNDED_ANSWER
+    if decision == "partial_answer" or unsupported:
+        outcome = Outcome.PARTIAL_ANSWER
+    if not citations:
+        outcome = Outcome.VIDEO_EVIDENCE_NOT_FOUND
+    return QueryResponse(
+        outcome=outcome,
+        answer=generation.get("answer", ""),
+        video_id=request.video_id,
+        query=request.query,
+        answer_mode=request.answer_mode,
+        timestamp=timestamp,
+        start_ms=primary.start_ms if primary else None,
+        end_ms=primary.end_ms if primary else None,
+        source_id=primary.source_id if primary else None,
+        source_type=primary.source_type if primary else SourceType.UNKNOWN,
+        parent_event_id=primary.parent_event_id if primary else None,
+        confidence=max(0.0, min(1.0, score)),
+        citations=citations,
+        answer_quality=AnswerQuality(
+            grounded=bool(citations) and claim_verification.get("passed", False),
+            has_timestamp=timestamp > 0,
+            has_citations=bool(citations),
+            uses_verified_evidence=bool(citations),
+            fallback_used=bool(generation.get("fallback_used")),
+            low_confidence_reason=confidence.get("low_confidence_reason"),
+            quality_score=max(0.0, min(1.0, score)),
+        ),
+        trace_id=trace_id,
+        warnings=[
+            warning
+            for warning in [
+                "claim_revision_used" if generation.get("revision_used") else None,
+                "conflicting_evidence" if temporal_context.get("conflicts") else None,
+            ]
+            if warning
+        ],
+    )
+
+
+def _policy_response(
+    *,
+    request: QueryRequest,
+    trace_id: str,
+    outcome: Outcome,
+    answer: str,
+    confidence: float,
+    warning: str | None = None,
+) -> QueryResponse:
+    return QueryResponse(
+        outcome=outcome,
+        answer=answer,
+        video_id=request.video_id,
+        query=request.query,
+        answer_mode=request.answer_mode,
+        timestamp=0.0,
+        confidence=max(0.0, min(1.0, confidence)),
+        citations=[],
+        answer_quality=AnswerQuality(
+            grounded=False,
+            has_timestamp=False,
+            has_citations=False,
+            uses_verified_evidence=False,
+            low_confidence_reason=outcome.value,
+            quality_score=max(0.0, min(1.0, confidence)),
+        ),
+        trace_id=trace_id,
+        warnings=[warning] if warning else [],
+    )
+
+
+def _agentic_prelude(request: QueryRequest) -> tuple[RetrievalTrace, dict[str, Any], dict[str, Any], dict[str, Any]]:
+    resolved = resolve_conversation_references(
+        raw_query=request.query,
+        conversation_context=request.conversation_context,
+    )
+    understanding = understand_query(
+        raw_query=request.query,
+        standalone_query=resolved["standalone_query"],
+    )
+    scope = route_scope(
+        repo_root=REPO_ROOT,
+        video_id=request.video_id,
+        query_understanding=understanding,
+        answer_mode=request.answer_mode,
+    )
+    trace = RetrievalTrace(
+        request=model_to_dict(request),
+        conversation_resolution=resolved,
+        query_understanding=understanding,
+        scope_decision=scope,
+    )
+    return trace, resolved, understanding, scope
+
+
+def _execute_plan_stage(
+    *,
+    request: QueryRequest,
+    trace: RetrievalTrace,
+    plan: Any,
+    query_understanding: dict[str, Any],
+    scope_decision: dict[str, Any],
+) -> dict[str, Any]:
+    trace.plans.append(model_to_dict(plan))
+    orchestrator = RetrievalOrchestrator(REPO_ROOT)
+    retrieval = orchestrator.execute(
+        video_id=request.video_id,
+        plan=plan,
+        query_understanding=query_understanding,
+    )
+    trace.retrieval_attempts.extend(retrieval["attempts"])
+    trace.warnings.extend(retrieval.get("warnings", []))
+
+    fusion = fuse_candidates(
+        candidates=retrieval["candidates"],
+        plan=model_to_dict(plan),
+        query_understanding=query_understanding,
+    )
+    reranked = rerank_candidates(
+        candidates=fusion["candidates"],
+        query_understanding=query_understanding,
+    )
+    deduped = deduplicate_temporal_candidates(candidates=reranked["candidates"])
+    verification = verify_evidence(
+        repo_root=REPO_ROOT,
+        video_id=request.video_id,
+        candidates=deduped["candidates"],
+        query_understanding=query_understanding,
+    )
+    answerability = evaluate_answerability(
+        verified_evidence=verification["verified_evidence"],
+        query_understanding=query_understanding,
+        scope_decision=scope_decision,
+    )
+    return {
+        "plan": plan,
+        "retrieval": retrieval,
+        "fusion": fusion,
+        "reranked": reranked,
+        "deduped": deduped,
+        "verification": verification,
+        "answerability": answerability,
+    }
+
+
+def _run_retrieval_gate(
+    *,
+    request: QueryRequest,
+    trace: RetrievalTrace,
+    query_understanding: dict[str, Any],
+    scope_decision: dict[str, Any],
+) -> dict[str, Any]:
+    plan = create_retrieval_plan(
+        query_understanding=query_understanding,
+        answer_mode=request.answer_mode,
+    )
+    stage = _execute_plan_stage(
+        request=request,
+        trace=trace,
+        plan=plan,
+        query_understanding=query_understanding,
+        scope_decision=scope_decision,
+    )
+    corrective_attempts = []
+    attempt = 0
+    while should_retry(stage["answerability"], attempt, plan.max_corrective_attempts):
+        corrective_plan = create_corrective_plan(
+            original_plan=plan,
+            query_understanding=query_understanding,
+            answerability=stage["answerability"],
+            attempt=attempt,
+        )
+        attempt += 1
+        corrective_stage = _execute_plan_stage(
+            request=request,
+            trace=trace,
+            plan=corrective_plan,
+            query_understanding=query_understanding,
+            scope_decision=scope_decision,
+        )
+        corrective_attempts.append(
+            {
+                "attempt": attempt,
+                "strategy": corrective_plan.strategy,
+                "decision": corrective_stage["answerability"]["decision"],
+                "score": corrective_stage["answerability"]["score"],
+            }
+        )
+        stage = corrective_stage
+
+    trace.candidate_fusion = {
+        key: value
+        for key, value in stage["fusion"].items()
+        if key != "candidates"
+    }
+    trace.reranking = {
+        key: value
+        for key, value in stage["reranked"].items()
+        if key != "candidates"
+    }
+    trace.reranking["deduplication"] = {
+        key: value
+        for key, value in stage["deduped"].items()
+        if key != "candidates"
+    }
+    verification = stage["verification"]
+    trace.verification = {
+        key: value
+        for key, value in verification.items()
+        if key not in {"verified_evidence", "rejected_evidence"}
+    }
+    trace.verification["top_verified_source_ids"] = [
+        item["source_id"]
+        for item in verification["verified_evidence"][:5]
+    ]
+    trace.verification["rejected_evidence"] = verification["rejected_evidence"][:20]
+    trace.answerability = stage["answerability"]
+    stage["corrective_attempts"] = corrective_attempts
+    return stage
+
+
+def _run_agentic_answer_pipeline(
+    *,
+    request: QueryRequest,
+    trace: RetrievalTrace,
+    retrieval_gate: dict[str, Any],
+    query_understanding: dict[str, Any],
+) -> QueryResponse:
+    temporal_context = build_temporal_context(
+        repo_root=REPO_ROOT,
+        video_id=request.video_id,
+        verified_evidence=retrieval_gate["verification"]["verified_evidence"],
+        retrieval_plan=model_to_dict(retrieval_gate["plan"]),
+        query_understanding=query_understanding,
+    )
+    trace.temporal_reasoning = {
+        key: value
+        for key, value in temporal_context.items()
+        if key != "expanded_atoms"
+    }
+    evidence_packet = build_evidence_packet(
+        request=model_to_dict(request),
+        outcome_candidate=retrieval_gate["answerability"]["decision"],
+        verified_evidence=retrieval_gate["verification"]["verified_evidence"],
+        temporal_context=temporal_context,
+        answerability=retrieval_gate["answerability"],
+    )
+    trace.evidence_packet_summary = {
+        "citation_count": len(evidence_packet["citations"]),
+        "verified_evidence_count": len(evidence_packet["verified_evidence"]),
+        "primary_moment": evidence_packet["temporal_context"].get("primary_moment"),
+        "missing_evidence_notes": evidence_packet.get("missing_evidence_notes", []),
+    }
+
+    generator = GroundedAnswerGenerator()
+    generation = generator.generate(evidence_packet)
+    claim_verification = verify_claims(generation["answer"], evidence_packet)
+    if not claim_verification["passed"] and claim_verification.get("can_revise"):
+        revised = generator.revise(evidence_packet, claim_verification)
+        revised["revision_used"] = True
+        revised_verification = verify_claims(revised["answer"], evidence_packet)
+        generation = revised
+        claim_verification = revised_verification
+
+    confidence = calibrate_confidence(
+        retrieval_gate=retrieval_gate,
+        temporal_context=temporal_context,
+        evidence_packet=evidence_packet,
+        claim_verification=claim_verification,
+        generation=generation,
+    )
+    trace.generation = generation
+    trace.claim_verification = claim_verification
+    trace.confidence = confidence
+    return _response_from_agentic_generation(
+        request=request,
+        trace_id=trace.trace_id,
+        generation=generation,
+        evidence_packet=evidence_packet,
+        temporal_context=temporal_context,
+        claim_verification=claim_verification,
+        confidence=confidence,
+        answerability=retrieval_gate["answerability"],
+    )
+
+
 @app.post("/ask")
 async def ask_question(request: QueryRequest):
+    trace_repo = TraceRepository(REPO_ROOT)
+    trace: RetrievalTrace | None = None
     try:
-        rag = get_hierarchy_rag()
-        result = rag.ask(request.query, video_id=request.video_id)
-        
-        # Extract all timestamps from citations for comprehensive references
-        timestamps = []
-        if result.get("citations"):
-            for citation in result["citations"]:
-                if "start_seconds" in citation and citation["start_seconds"] is not None:
-                    timestamp = float(citation["start_seconds"])
-                    ts_str = citation.get("timestamp", str(timestamp))
-                    timestamps.append({
-                        "timestamp": timestamp,
-                        "formatted": ts_str,
-                        "context": citation.get("visual_summary", "")[:100] + "..." if citation.get("visual_summary") else ""
-                    })
-                elif "timestamp" in citation:
-                    # Parse timestamp like "00:01:23" to seconds
-                    ts_str = citation["timestamp"]
-                    try:
-                        parts = ts_str.split(':')
-                        if len(parts) == 3:
-                            timestamp = int(parts[0]) * 3600 + int(parts[1]) * 60 + int(parts[2])
-                        elif len(parts) == 2:
-                            timestamp = int(parts[0]) * 60 + int(parts[1])
-                        else:
-                            timestamp = float(ts_str)
-                        timestamps.append({
-                            "timestamp": timestamp,
-                            "formatted": ts_str,
-                            "context": citation.get("visual_summary", "")[:100] + "..." if citation.get("visual_summary") else ""
-                        })
-                    except:
-                        continue
-        
-        # Use the first timestamp for video jumping, but return all for frontend
-        primary_timestamp = timestamps[0]["timestamp"] if timestamps else 0.0
-        
-        return QueryResponse(
-            answer=result.get("answer", "❌  Retriever unavailable or processing failed."),
-            timestamp=primary_timestamp,
-            confidence=result.get("confidence", 0.0),
-            citations=result.get("citations", [])
-        )
+        trace, resolved, understanding, scope = _agentic_prelude(request)
+        if scope["policy_action"] == ScopeAction.PROCESSING_INCOMPLETE:
+            response = _policy_response(
+                request=request,
+                trace_id=trace.trace_id,
+                outcome=Outcome.PROCESSING_INCOMPLETE,
+                answer="This video is not ready for reliable question answering yet. Please finish processing and indexing it first.",
+                confidence=0.0,
+                warning="processing_incomplete",
+            )
+        elif scope["policy_action"] == ScopeAction.ABSTAIN_UNRELATED:
+            response = _policy_response(
+                request=request,
+                trace_id=trace.trace_id,
+                outcome=Outcome.UNRELATED_TO_VIDEO,
+                answer="That question appears to be outside the selected video, so I cannot answer it with video citations in strict video mode.",
+                confidence=float(scope.get("confidence", 0.0)),
+            )
+        elif scope["policy_action"] == ScopeAction.CLARIFY:
+            response = _policy_response(
+                request=request,
+                trace_id=trace.trace_id,
+                outcome=Outcome.AMBIGUOUS_QUERY,
+                answer="Do you want the answer from this selected video, or a general explanation?",
+                confidence=float(scope.get("confidence", 0.0)),
+            )
+        elif scope["policy_action"] == ScopeAction.GENERAL_ANSWER:
+            response = _policy_response(
+                request=request,
+                trace_id=trace.trace_id,
+                outcome=Outcome.UNRELATED_TO_VIDEO,
+                answer="This question looks unrelated to the selected video. Hybrid general-answer generation will be added in the next retrieval phase, so I am not attaching video citations.",
+                confidence=float(scope.get("confidence", 0.0)),
+            )
+        else:
+            retrieval_gate = _run_retrieval_gate(
+                request=request,
+                trace=trace,
+                query_understanding=understanding,
+                scope_decision=scope,
+            )
+            decision = retrieval_gate["answerability"]["decision"]
+            if decision in {"answer", "partial_answer"}:
+                response = _run_agentic_answer_pipeline(
+                    request=request,
+                    trace=trace,
+                    retrieval_gate=retrieval_gate,
+                    query_understanding=understanding,
+                )
+            elif decision == "corrective_retrieval":
+                response = _policy_response(
+                    request=request,
+                    trace_id=trace.trace_id,
+                    outcome=Outcome.VIDEO_EVIDENCE_NOT_FOUND,
+                    answer="I found weak related evidence, but not enough verified support to answer safely after corrective retrieval.",
+                    confidence=float(retrieval_gate["answerability"].get("score", 0.0)),
+                    warning="corrective_retrieval_exhausted",
+                )
+            else:
+                response = _policy_response(
+                    request=request,
+                    trace_id=trace.trace_id,
+                    outcome=Outcome.VIDEO_EVIDENCE_NOT_FOUND,
+                    answer="I could not find enough reliable evidence in this video to answer that question.",
+                    confidence=float(retrieval_gate["answerability"].get("score", 0.0)),
+                    warning=decision,
+                )
+
+        trace.final_response = model_to_dict(response)
+        trace_repo.save(request.video_id, trace)
+        return response
     except Exception as e:
         logger.error(f"RAG error in /ask: {e}", exc_info=True)
-        # Return a valid QueryResponse even on internal error to avoid 500
-        return QueryResponse(
-            answer=f"❌  Error: {str(e)}",
-            timestamp=0.0,
+        trace_id = trace.trace_id if trace else "trace_error"
+        response = _policy_response(
+            request=request,
+            trace_id=trace_id,
+            outcome=Outcome.SYSTEM_ERROR,
+            answer=f"Error: {str(e)}",
             confidence=0.0,
-            citations=[]
+            warning="system_error",
         )
+        if trace:
+            trace.errors.append({"code": "system_error", "message": str(e)})
+            trace.final_response = model_to_dict(response)
+            trace_repo.save(request.video_id, trace)
+        return response
+
 
 @app.post("/ask-debug")
 async def ask_question_debug(request: QueryRequest):
+    trace_repo = TraceRepository(REPO_ROOT)
     try:
-        rag = get_hierarchy_rag()
-        return rag.ask(request.query, video_id=request.video_id)
+        trace, resolved, understanding, scope = _agentic_prelude(request)
+        result = {}
+        retrieval_gate = {}
+        if scope["policy_action"] == ScopeAction.RETRIEVE_VIDEO:
+            retrieval_gate = _run_retrieval_gate(
+                request=request,
+                trace=trace,
+                query_understanding=understanding,
+                scope_decision=scope,
+            )
+            if retrieval_gate["answerability"]["decision"] in {"answer", "partial_answer"}:
+                response = _run_agentic_answer_pipeline(
+                    request=request,
+                    trace=trace,
+                    retrieval_gate=retrieval_gate,
+                    query_understanding=understanding,
+                )
+                result = trace.generation
+            else:
+                response = _policy_response(
+                    request=request,
+                    trace_id=trace.trace_id,
+                    outcome=Outcome.VIDEO_EVIDENCE_NOT_FOUND,
+                    answer="Debug route stopped before generation because the evidence was not answerable.",
+                    confidence=float(retrieval_gate["answerability"].get("score", 0.0)),
+                    warning=retrieval_gate["answerability"]["decision"],
+                )
+        else:
+            response = _policy_response(
+                request=request,
+                trace_id=trace.trace_id,
+                outcome=Outcome.AMBIGUOUS_QUERY if scope["policy_action"] == ScopeAction.CLARIFY else Outcome.UNRELATED_TO_VIDEO,
+                answer="Debug route stopped before retrieval because the scope policy did not select video retrieval.",
+                confidence=float(scope.get("confidence", 0.0)),
+            )
+        trace.final_response = model_to_dict(response)
+        trace_repo.save(request.video_id, trace)
+        return {
+            "trace": model_to_dict(trace),
+            "response": model_to_dict(response),
+            "retrieval_gate": retrieval_gate,
+            "hierarchy_result": result,
+        }
     except Exception as e:
         logger.error(f"RAG error in /ask-debug: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e)) from e
-
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=int(os.getenv("PORT", "8001")))

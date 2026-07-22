@@ -10,3 +10,6 @@ uvicorn[standard]
 python-multipart
 chromadb
 sentence-transformers
+pytesseract
+scipy
+scikit-learn

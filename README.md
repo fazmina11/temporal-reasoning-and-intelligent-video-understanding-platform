@@ -75,6 +75,14 @@ Run the chunking foundation for an existing manifest:
 python -m src.pipeline.chunking_foundation --video-id <video_id>
 ```
 
+Build timestamped OCR, speaker, and audio-event evidence after transcript, frame, chunk, and event artifacts exist:
+
+```powershell
+python -m src.pipeline.modality_foundation --video-id <video_id> --expected-speakers 1
+```
+
+OCR requires the Tesseract executable. Install it on Windows with `winget install --id UB-Mannheim.TesseractOCR -e`, restart the terminal if needed, or set `TESSERACT_PATH` to `tesseract.exe`. Omit `--expected-speakers` when the count is unknown; use `1` for a single-presenter lecture and the known count for interviews or panels.
+
 Run transcript attachment, visual artifacts, atom clips, semantic chunks, and
 chunk validation after C3-C5:
 
