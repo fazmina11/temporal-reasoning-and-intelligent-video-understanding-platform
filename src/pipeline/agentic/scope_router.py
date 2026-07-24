@@ -71,6 +71,14 @@ def route_scope(
         query_understanding=query_understanding,
         answer_mode=mode,
     )
+    if _needs_clarification_from_scope(query_understanding, scope_analysis):
+        return {
+            "scope": "ambiguous",
+            "confidence": 0.78,
+            "reasons": ["query references a broad visual, example, comparison, model, or key point without a specific anchor"],
+            "policy_action": ScopeAction.CLARIFY,
+            "scope_analysis": scope_analysis,
+        }
 
     if "system_or_help" in query_types and not _has_video_reference(query) and scope_analysis["scope_score"] < 0.18:
         return _apply_policy(
@@ -90,7 +98,7 @@ def route_scope(
             scope_analysis,
         )
 
-    if scope_analysis["scope_score"] >= scope_analysis["thresholds"]["probable_related_threshold"]:
+    if scope_analysis.get("probable_related") or scope_analysis["scope_score"] >= scope_analysis["thresholds"]["probable_related_threshold"]:
         return {
             "scope": "video_related",
             "confidence": min(0.95, 0.55 + scope_analysis["scope_score"]),
@@ -118,6 +126,37 @@ def route_scope(
         }
 
     return _apply_policy("unrelated", 0.72, ["query has weak overlap with selected video scope"], mode, scope_analysis)
+
+
+def _needs_clarification_from_scope(
+    query_understanding: dict[str, Any],
+    scope_analysis: dict[str, Any],
+) -> bool:
+    query_types = set(query_understanding.get("query_types") or [])
+    if "unrelated_or_general" in query_types:
+        return False
+    lowered = str(query_understanding.get("standalone_query") or query_understanding.get("raw_query") or "").lower()
+    if re.search(r"\b(?:opening|first|initial|intro(?:duction)?)\s+slide\b", lowered):
+        return False
+    if (
+        re.search(r"\bthe model\b", lowered)
+        and "exact_timestamp" not in query_types
+        and not re.search(r"\b(mcp|api|apis|app code|reasoning layer|model context protocol)\b", lowered)
+    ):
+        return True
+    if re.search(
+        r"\b(who was (?:the )?speaker talking about|"
+        r"timestamp for (?:the )?key point|where is (?:the )?example)\b",
+        lowered,
+    ):
+        return True
+    matched_terms = set(scope_analysis.get("matched_terms") or [])
+    matched_entities = set(scope_analysis.get("matched_entities") or [])
+    if matched_terms or matched_entities or query_understanding.get("time_constraints"):
+        return False
+    if query_types & {"visual_memory", "comparison", "before_after"}:
+        return True
+    return bool(re.search(r"\b(example|key point|important difference|the model|the slide)\b", lowered))
 
 
 def _apply_policy(

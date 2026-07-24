@@ -24,6 +24,20 @@ class AgenticQueryUnderstandingTests(unittest.TestCase):
         self.assertIn("unknown", result["query_types"])
         self.assertTrue(result["requires_transcript_search"])
 
+    def test_when_question_requests_timestamp_search_without_literal_time(self) -> None:
+        result = understand_query(
+            raw_query="When is app code compared with the model reasoning layer?"
+        )
+        self.assertIn("exact_timestamp", result["query_types"])
+        self.assertEqual(result["requested_granularity"], "atom")
+
+    def test_speaker_mention_does_not_require_identity_modality(self) -> None:
+        result = understand_query(
+            raw_query="What visual text appears when the speaker discusses adoption?"
+        )
+        self.assertNotIn("speaker_question", result["query_types"])
+        self.assertNotIn("speaker", result["required_modalities"])
+
     def test_follow_up_resolves_previous_citation(self) -> None:
         resolved = resolve_conversation_references(
             raw_query="What does he say after that?",

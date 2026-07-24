@@ -7,19 +7,45 @@ from typing import Any
 from .audio_event_detection import build_audio_event_artifacts
 from .ocr_extraction import extract_ocr_artifacts
 from .speaker_diarization import build_speaker_artifacts
+from .modality_quality import write_quality_report
 
 
 def run_modality_foundation(
-    *, repo_root: Path, video_id: str, skip_ocr: bool = False, expected_speakers: int | None = None
+    *,
+    repo_root: Path,
+    video_id: str,
+    skip_ocr: bool = False,
+    expected_speakers: int | None = None,
+    allow_partial: bool = True,
 ) -> dict[str, Any]:
-    results = {
-        "speakers": build_speaker_artifacts(
-            repo_root=repo_root, video_id=video_id, expected_speakers=expected_speakers
+    results: dict[str, Any] = {}
+    errors: dict[str, str] = {}
+    for name, fn in [
+        (
+            "speakers",
+            lambda: build_speaker_artifacts(
+                repo_root=repo_root, video_id=video_id, expected_speakers=expected_speakers
+            ),
         ),
-        "audio_events": build_audio_event_artifacts(repo_root=repo_root, video_id=video_id),
-    }
+        ("audio_events", lambda: build_audio_event_artifacts(repo_root=repo_root, video_id=video_id)),
+    ]:
+        try:
+            results[name] = fn()
+        except Exception as exc:
+            if not allow_partial:
+                raise
+            errors[name] = str(exc)
+            _write_failure_report(repo_root=repo_root, video_id=video_id, modality=_report_modality(name), error=str(exc))
     if not skip_ocr:
-        results["ocr"] = extract_ocr_artifacts(repo_root=repo_root, video_id=video_id)
+        try:
+            results["ocr"] = extract_ocr_artifacts(repo_root=repo_root, video_id=video_id)
+        except Exception as exc:
+            if not allow_partial:
+                raise
+            errors["ocr"] = str(exc)
+            _write_failure_report(repo_root=repo_root, video_id=video_id, modality="ocr", error=str(exc))
+    results["errors"] = errors
+    results["status"] = "partial" if errors else "completed"
     return results
 
 
@@ -38,10 +64,32 @@ def main() -> None:
     )
     print(
         "Modality artifacts complete: "
-        f"{result['speakers']['speaker_count']} speakers, "
-        f"{result['audio_events']['event_count']} audio events, "
+        f"{result.get('speakers', {}).get('speaker_count', 0)} speakers, "
+        f"{result.get('audio_events', {}).get('event_count', 0)} audio events, "
         f"{result.get('ocr', {}).get('record_count', 0)} OCR records."
     )
+
+
+def _write_failure_report(*, repo_root: Path, video_id: str, modality: str, error: str) -> None:
+    write_quality_report(
+        repo_root=repo_root,
+        video_id=video_id,
+        modality=modality,
+        payload={
+            "status": "failed",
+            "error": error,
+            "record_quality": {
+                "count": 0,
+                "mean_quality": 0.0,
+                "low_quality_count": 0,
+                "low_quality_ratio": 0.0,
+            },
+        },
+    )
+
+
+def _report_modality(name: str) -> str:
+    return {"speakers": "speaker", "audio_events": "audio"}.get(name, name)
 
 
 if __name__ == "__main__":

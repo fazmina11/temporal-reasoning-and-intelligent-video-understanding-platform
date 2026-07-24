@@ -43,8 +43,20 @@ def evaluate_answerability(
 
     features = _sufficiency_features(verified_evidence, query_understanding)
     score = _evidence_sufficiency(features)
+    required_modalities = set(query_understanding.get("required_modalities") or []) - {"transcript"}
+    has_high_quality_required_evidence = any(
+        (
+            required_modalities
+            & set(item.get("evidence_types") or [])
+            and float(item.get("quality_score", 0.0) or 0.0) >= 0.65
+            and float(item.get("support_score", 0.0) or 0.0) >= 0.30
+        )
+        for item in verified_evidence
+    )
 
-    if score >= ANSWER_THRESHOLD:
+    if score >= ANSWER_THRESHOLD or (
+        score >= PARTIAL_THRESHOLD and has_high_quality_required_evidence
+    ):
         decision = "answer"
     elif score >= PARTIAL_THRESHOLD:
         decision = "partial_answer"

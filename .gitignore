@@ -36,6 +36,8 @@ data/processed/events/
 data/processed/chapters/
 data/processed/reports/
 data/processed/retrieval_traces/
+data/processed/scope_profiles/
+data/evaluation/releases/
 
 # ChromaDB
 chroma_db/

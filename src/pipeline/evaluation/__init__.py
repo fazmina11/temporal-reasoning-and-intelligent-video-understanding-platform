@@ -22,6 +22,7 @@ __all__ = [
     "generate_markdown_report",
     "main",
     "run_evaluation_workflow",
+    "run_phase_n_release",
     "write_reports",
     "freeze_baseline",
 ]
@@ -37,6 +38,7 @@ _EXPORT_MODULES = {
     "build_arg_parser": ".evaluate_ask",
     "main": ".evaluate_ask",
     "run_evaluation_workflow": ".evaluate_ask",
+    "run_phase_n_release": ".release_manager",
     "QADataset": ".qa_schema",
     "QAItem": ".qa_schema",
     "QAValidationError": ".qa_schema",

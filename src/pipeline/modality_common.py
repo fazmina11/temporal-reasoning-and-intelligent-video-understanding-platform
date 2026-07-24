@@ -76,5 +76,29 @@ def timeline_parents(timestamp_ms: int, maps: dict[str, Any]) -> dict[str, str |
     }
 
 
+def timeline_parent_ids(start_ms: int, end_ms: int, maps: dict[str, Any]) -> dict[str, Any]:
+    """Return all hierarchy parents touched by a modality interval."""
+    atoms = [
+        row
+        for row in maps["atoms"]
+        if overlap_ms(int(row["start_ms"]), int(row["end_ms"]), int(start_ms), int(end_ms)) > 0
+    ]
+    atom_ids = [row["atom_id"] for row in atoms]
+    chunk_ids = sorted({row.get("semantic_chunk_id") for row in atoms if row.get("semantic_chunk_id")})
+    event_ids = sorted({
+        maps["chunk_by_id"].get(chunk_id, {}).get("parent_event_id")
+        for chunk_id in chunk_ids
+        if maps["chunk_by_id"].get(chunk_id, {}).get("parent_event_id")
+    })
+    midpoint = (int(start_ms) + int(end_ms)) // 2
+    primary = timeline_parents(midpoint, maps)
+    return {
+        **primary,
+        "parent_atom_ids": atom_ids,
+        "parent_chunk_ids": chunk_ids,
+        "parent_event_ids": event_ids,
+    }
+
+
 def overlap_ms(start_a: int, end_a: int, start_b: int, end_b: int) -> int:
     return max(0, min(end_a, end_b) - max(start_a, start_b))

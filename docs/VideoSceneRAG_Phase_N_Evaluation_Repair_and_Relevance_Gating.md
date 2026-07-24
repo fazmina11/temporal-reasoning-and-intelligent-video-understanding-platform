@@ -12,7 +12,7 @@
 **Primary goal:** Repair the evaluation baseline, improve OCR/speaker/audio evidence, retrieve the correct timeline evidence, and reject irrelevant or unsupported questions without rejecting valid video questions.  
 **Implementation approach:** Deterministic orchestration, bounded agent components, typed contracts, calibrated thresholds, persistent traces, and regression-first development.
 
-**Current implementation status:** N0, N1, N2, N3, N4, N5, and N6 are implemented.
+**Current implementation status:** N0 through N10 are implemented.
 
 - N0 baseline freeze tooling is available in `src/pipeline/evaluation/baseline_manager.py`.
 - N1 QA labels support richer Phase N fields while remaining backward-compatible with the existing QA set.
@@ -21,6 +21,32 @@
 - N4 retrieval orchestration normalizes candidate metadata, records modality/index readiness, and exposes fusion/reranking margins.
 - N5 answerability uses an explainable evidence-sufficiency gate and bounded corrective retrieval metadata.
 - N6 timestamp and citation repair is implemented through `src/pipeline/agentic/citation_registry.py`, canonical evidence IDs, separate anchor/context/citation intervals, source-type compatibility checks, and citation validation in the evidence packet.
+- N7 OCR quality is implemented through `src/pipeline/ocr_extraction.py` with frame-level provenance, token boxes, frame URI/path references, temporal OCR tracks, quality flags, and `data/processed/reports/{video_id}_ocr_quality.json`.
+- N8 speaker quality is implemented through `src/pipeline/speaker_diarization.py` with smoothed speaker turns, segment provenance, parent atom links, turn quality scores, and `data/processed/reports/{video_id}_speaker_quality.json`.
+- N9 audio quality is implemented through `src/pipeline/audio_event_detection.py` with speech/silence/audio-event labels, transition markers, parent atom links, event quality scores, and `data/processed/reports/{video_id}_audio_quality.json`.
+- N10 calibration and regression release is implemented through `config/phase_n_thresholds.yaml` and `src/pipeline/evaluation/release_manager.py`. The release workflow snapshots thresholds, runs the QA set, compares with the latest baseline when available, checks production gates, writes release JSON/Markdown artifacts, and recommends the next repair focus. The MCP-vs-API 60-question release suite now passes every mandatory gate: outcome accuracy `1.00`, negative abstention `1.00`, timestamp hit rate `1.00`, citation presence/validity `1.00`, required-term coverage `1.00`, unsupported-claim rate `0.00`, fallback rate `0.00`, and execution failures `0`.
+
+## N10 Citation, Timestamp, and Fallback Repair
+
+The final N10 repair adds the following production behavior:
+
+- Public citation windows use the primary evidence anchor, while the wider source interval and answer context remain available in the trace.
+- Comparison questions can cite a bounded contiguous atomic window when the two sides of the comparison cross atom boundaries.
+- OCR evidence carries extraction quality separately from retrieval relevance and preserves exact frame provenance.
+- Local generation selects query-relevant evidence sentences and preserves citation IDs and timestamps when the configured provider is unavailable.
+- Provider failure is traced separately from answer fallback, so a grounded deterministic answer is not mislabeled as an ungrounded fallback.
+- Claim verification revises once, removes unsupported sentences, and re-verifies the remaining answer before response construction.
+- API responses retain only citations that are actually referenced by the final answer.
+- Modality quality warnings remain visible but do not block a release when every mandatory quality gate passes.
+
+Final release artifacts:
+
+```text
+data/evaluation/releases/mcp_vs_api/
+  n10_citation_timestamp_fallback_repair_release/
+    phase_n_release_report.json
+    phase_n_release_report.md
+```
 
 ---
 

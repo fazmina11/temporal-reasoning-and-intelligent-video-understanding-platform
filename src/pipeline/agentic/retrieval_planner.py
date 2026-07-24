@@ -18,7 +18,7 @@ def create_retrieval_plan(
     modalities = set(query_understanding.get("required_modalities") or [])
     steps: list[RetrievalStep] = []
 
-    if "exact_timestamp" in query_types:
+    if "exact_timestamp" in query_types and query_understanding.get("time_constraints"):
         return RetrievalPlan(
             strategy="exact_timeline_lookup",
             retrieval_steps=[
@@ -44,9 +44,20 @@ def create_retrieval_plan(
             answer_mode=AnswerMode(answer_mode),
         )
 
-    if "visual_memory" in query_types or "visual" in modalities:
+    if "ocr_or_slide_text" in query_types or "ocr" in modalities:
         steps.extend(
             [
+                RetrievalStep(retriever="ocr_sparse", level="frame", query=query, top_k=30, weight=1.7),
+                RetrievalStep(retriever="local_visual", level="atomic_span", query=query, top_k=20, weight=1.0),
+                RetrievalStep(retriever="chunk_dense", level="semantic_chunk", query=query, top_k=20, weight=1.0),
+                RetrievalStep(retriever="transcript_dense", level="atomic_span", query=query, top_k=20, weight=0.9),
+            ]
+        )
+        strategy = "ocr_slide_text_retrieval"
+    elif "visual_memory" in query_types or "visual" in modalities:
+        steps.extend(
+            [
+                RetrievalStep(retriever="ocr_sparse", level="frame", query=query, top_k=30, weight=1.6),
                 RetrievalStep(retriever="visual_dense", level="semantic_chunk", query=query, top_k=30, weight=1.5),
                 RetrievalStep(retriever="local_visual", level="atomic_span", query=query, top_k=20, weight=1.2),
                 RetrievalStep(retriever="event_dense", level="event", query=query, top_k=15, weight=1.2),
@@ -55,8 +66,6 @@ def create_retrieval_plan(
         )
         if "action_memory" in query_types:
             steps.append(RetrievalStep(retriever="clip_action", level="clip", query=query, top_k=15, weight=1.1))
-        if "ocr_or_slide_text" in query_types or "ocr" in modalities:
-            steps.append(RetrievalStep(retriever="ocr_sparse", level="frame", query=query, top_k=25, weight=1.5))
         strategy = "visual_causal_memory_recovery" if "cause_effect" in query_types else "visual_memory_recovery"
     elif "audio_memory" in query_types or "audio" in modalities:
         steps.extend(
@@ -95,6 +104,15 @@ def create_retrieval_plan(
             ]
         )
         strategy = "exact_quote"
+    elif "exact_timestamp" in query_types:
+        steps.extend(
+            [
+                RetrievalStep(retriever="transcript_dense", level="atomic_span", query=query, top_k=30, weight=1.5),
+                RetrievalStep(retriever="sparse_text", level="atomic_span", query=query, top_k=30, weight=1.3),
+                RetrievalStep(retriever="chunk_dense", level="semantic_chunk", query=query, top_k=20, weight=1.0),
+            ]
+        )
+        strategy = "timestamp_moment_search"
     elif query_types & {"summary", "chapter_summary"}:
         steps.extend(
             [

@@ -61,6 +61,7 @@ def make_candidate(
     ocr_text: list[str] | None = None,
     entities: list[str] | None = None,
     media_refs: dict[str, Any] | None = None,
+    quality_score: float | None = None,
     versions: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     return candidate_to_dict(
@@ -79,6 +80,7 @@ def make_candidate(
             ocr_text=ocr_text or [],
             entities=entities or [],
             media_refs=media_refs or {},
+            quality_score=quality_score,
             retrieval={
                 "retriever": retriever,
                 "raw_score": round(float(raw_score), 6),

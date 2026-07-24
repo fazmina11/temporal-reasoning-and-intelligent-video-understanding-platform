@@ -11,6 +11,7 @@ import uuid
 import shutil
 import asyncio
 import logging
+import re
 from functools import partial
 from pathlib import Path
 from typing import List, Optional, Dict, Any
@@ -55,6 +56,7 @@ from src.pipeline.hierarchy_indexing import index_hierarchy
 from src.pipeline.hierarchy_rag import HierarchyVideoRAG
 from src.pipeline.json_artifacts import read_json
 from src.pipeline.media_assets import extract_normalized_audio
+from src.pipeline.modality_foundation import run_modality_foundation
 from src.pipeline.agentic.contracts import (
     AnswerQuality,
     AskRequest,
@@ -82,7 +84,7 @@ from src.pipeline.agentic.corrective_retrieval import create_corrective_plan, sh
 from src.pipeline.agentic.temporal_reasoner import build_temporal_context
 from src.pipeline.agentic.evidence_packet import build_evidence_packet
 from src.pipeline.agentic.answer_generator import GroundedAnswerGenerator
-from src.pipeline.agentic.claim_verifier import verify_claims
+from src.pipeline.agentic.claim_verifier import remove_unsupported_claims, verify_claims
 from src.pipeline.agentic.confidence_calibrator import calibrate_confidence
 
 app = FastAPI(title="VideoSceneRAG API")
@@ -417,6 +419,34 @@ async def process_pipeline(video_id: str, video_path: str):
             index_result["collections"]
         )
 
+        processing_status[video_id]["status"] = "OCR, speaker, and audio quality artifacts"
+        processing_status[video_id]["progress"] = 88
+        processing_status[video_id]["phase"] = "modality_foundation"
+        update_manifest_status(
+            repo_root=REPO_ROOT,
+            video_id=video_id,
+            status="processing",
+            progress=88,
+            current_phase="modality_foundation",
+        )
+        modality_result = await loop.run_in_executor(
+            None,
+            partial(
+                run_modality_foundation,
+                repo_root=REPO_ROOT,
+                video_id=video_id,
+                skip_ocr=os.getenv("SKIP_OCR", "false").lower() in {"1", "true", "yes"},
+                expected_speakers=(
+                    int(os.getenv("EXPECTED_SPEAKERS"))
+                    if os.getenv("EXPECTED_SPEAKERS")
+                    else None
+                ),
+                allow_partial=True,
+            ),
+        )
+        processing_status[video_id]["modality_status"] = modality_result["status"]
+        processing_status[video_id]["modality_errors"] = modality_result["errors"]
+
         scope_profile = await loop.run_in_executor(
             None,
             partial(
@@ -443,13 +473,13 @@ async def process_pipeline(video_id: str, video_path: str):
         
         # Phase 2: Visual Enrichment
         processing_status[video_id]["status"] = "Phase 2: Visual Analysis (Gemini)"
-        processing_status[video_id]["progress"] = 86
+        processing_status[video_id]["progress"] = 92
         processing_status[video_id]["phase"] = "visual_analysis"
         update_manifest_status(
             repo_root=REPO_ROOT,
             video_id=video_id,
             status="processing",
-            progress=82,
+            progress=92,
             current_phase="visual_analysis",
         )
         await loop.run_in_executor(None, phase2_enrich)
@@ -627,6 +657,14 @@ def _response_from_agentic_generation(
     confidence: dict[str, Any],
     answerability: dict[str, Any],
 ) -> QueryResponse:
+    cited_ids = set(re.findall(r"\bS\d+\b", str(generation.get("answer") or "")))
+    packet_citations = evidence_packet.get("citations", [])
+    if cited_ids:
+        packet_citations = [
+            item for item in packet_citations if item.get("citation_id") in cited_ids
+        ]
+    elif packet_citations:
+        packet_citations = packet_citations[:1]
     citations = [
         Citation(
             citation_id=item["citation_id"],
@@ -654,7 +692,7 @@ def _response_from_agentic_generation(
                 None,
             ),
         )
-        for item in evidence_packet.get("citations", [])
+        for item in packet_citations
     ]
     timestamp = _primary_timestamp(citations)
     primary = citations[0] if citations else None
@@ -933,6 +971,16 @@ def _run_agentic_answer_pipeline(
         revised_verification = verify_claims(revised["answer"], evidence_packet)
         generation = revised
         claim_verification = revised_verification
+    if not claim_verification["passed"]:
+        cleaned_answer = remove_unsupported_claims(generation["answer"], claim_verification)
+        if cleaned_answer:
+            generation = {
+                **generation,
+                "answer": cleaned_answer,
+                "claim_filter_used": True,
+                "citation_preserving": True,
+            }
+            claim_verification = verify_claims(cleaned_answer, evidence_packet)
 
     confidence = calibrate_confidence(
         retrieval_gate=retrieval_gate,

@@ -69,6 +69,18 @@ def verify_claims(answer: str, evidence_packet: dict[str, Any]) -> dict[str, Any
     }
 
 
+def remove_unsupported_claims(answer: str, verification: dict[str, Any]) -> str:
+    """Return only claims that the verifier can tie to packet evidence."""
+    kept = [
+        str(claim.get("text") or "").strip()
+        for claim in verification.get("claims", [])
+        if claim.get("label") in {"supported", "not_video_claim"}
+        and not claim.get("incompatible_citations")
+        and not (set(claim.get("citations") or []) & set(verification.get("invalid_citations") or []))
+    ]
+    return " ".join(text for text in kept if text).strip()
+
+
 def _sentences(answer: str) -> list[str]:
     return [s.strip() for s in re.split(r"(?<=[.!?])\s+", answer) if s.strip()]
 

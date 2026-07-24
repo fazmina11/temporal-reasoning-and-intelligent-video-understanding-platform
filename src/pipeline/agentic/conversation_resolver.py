@@ -30,6 +30,11 @@ REFERENCE_TERMS = {
     "the slide",
     "the diagram",
     "the graph",
+    "the example",
+    "example",
+    "key point",
+    "important difference",
+    "the model",
 }
 
 
@@ -129,4 +134,11 @@ def _unresolved_references(lowered_query: str) -> list[str]:
         for term in sorted(REFERENCE_TERMS, key=len, reverse=True)
         if re.search(rf"\b{re.escape(term)}\b", lowered_query)
     ]
+    if "this" in unresolved and re.search(r"\bthis\s+(lecture|video|mcp explanation|selected video|question)\b", lowered_query):
+        unresolved.remove("this")
+    if "the slide" in unresolved and re.search(
+        r"\b(?:opening|first|initial|title|intro(?:duction)?)\s+slide\b|\btitle\b.*\bslide\b",
+        lowered_query,
+    ):
+        unresolved.remove("the slide")
     return unresolved[:5]

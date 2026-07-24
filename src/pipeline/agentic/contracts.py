@@ -144,6 +144,7 @@ class CandidateEvidence(BaseModel):
     ocr_text: list[str] = Field(default_factory=list)
     entities: list[str] = Field(default_factory=list)
     media_refs: dict[str, Any] = Field(default_factory=dict)
+    quality_score: float | None = Field(default=None, ge=0, le=1)
     retrieval: dict[str, Any] = Field(default_factory=dict)
     versions: dict[str, Any] = Field(default_factory=dict)
 

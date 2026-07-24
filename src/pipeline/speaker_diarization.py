@@ -11,10 +11,16 @@ from .modality_common import (
     hierarchy_maps,
     load_transcript_segments,
     normalized_segment,
+    overlap_ms,
+    timeline_parent_ids,
     timeline_parents,
 )
+from .modality_quality import quality_summary, write_quality_report
 
-SPEAKER_SCHEMA_VERSION = "speaker-artifacts-v1"
+SPEAKER_SCHEMA_VERSION = "speaker-artifacts-v2"
+SPEAKER_MIN_TURN_QUALITY = 0.55
+SPEAKER_MERGE_GAP_MS = 700
+SPEAKER_MIN_TURN_MS = 500
 
 
 class SpeakerDiarizationError(RuntimeError):
@@ -67,6 +73,8 @@ def build_speaker_artifacts(
     labeled_segments = []
     for row, speaker_id in zip(segments, stable_labels):
         midpoint = (row["start_ms"] + row["end_ms"]) // 2
+        parents = timeline_parent_ids(row["start_ms"], row["end_ms"], maps)
+        segment_quality = _segment_quality(row, clustering_score)
         labeled_segments.append(
             {
                 "segment_id": row["segment_id"],
@@ -74,7 +82,11 @@ def build_speaker_artifacts(
                 "start_ms": row["start_ms"],
                 "end_ms": row["end_ms"],
                 "text": row["text"],
+                "duration_ms": row["end_ms"] - row["start_ms"],
+                "quality_score": segment_quality,
+                "quality_flags": _speaker_quality_flags(row["end_ms"] - row["start_ms"], segment_quality),
                 **timeline_parents(midpoint, maps),
+                **parents,
             }
         )
     turns = _merge_turns(labeled_segments)
@@ -88,9 +100,24 @@ def build_speaker_artifacts(
                 "total_speech_ms": sum(row["end_ms"] - row["start_ms"] for row in own),
                 "segment_count": len(own),
                 "turn_count": sum(turn["speaker_id"] == speaker_id for turn in turns),
+                "mean_quality": round(sum(row["quality_score"] for row in own) / max(1, len(own)), 4),
             }
         )
 
+    quality_report_path = write_quality_report(
+        repo_root=repo_root,
+        video_id=video_id,
+        modality="speaker",
+        payload={
+            "backend": "acoustic_spectral_clustering",
+            "speaker_count": speaker_count,
+            "clustering_confidence": round(clustering_score, 4),
+            "segment_quality": quality_summary([row["quality_score"] for row in labeled_segments], minimum=SPEAKER_MIN_TURN_QUALITY),
+            "turn_quality": quality_summary([row["quality_score"] for row in turns], minimum=SPEAKER_MIN_TURN_QUALITY),
+            "turn_count": len(turns),
+            "merge_gap_ms": SPEAKER_MERGE_GAP_MS,
+        },
+    )
     payload = {
         "schema_version": SPEAKER_SCHEMA_VERSION,
         "video_id": video_id,
@@ -98,12 +125,18 @@ def build_speaker_artifacts(
         "pipeline_version": manifest["pipeline_version"],
         "time_unit": "milliseconds",
         "backend": "acoustic_spectral_clustering",
+        "config": {
+            "merge_gap_ms": SPEAKER_MERGE_GAP_MS,
+            "minimum_turn_ms": SPEAKER_MIN_TURN_MS,
+            "minimum_turn_quality": SPEAKER_MIN_TURN_QUALITY,
+        },
         "speaker_count": speaker_count,
         "clustering_confidence": round(clustering_score, 4),
         "speakers": speakers,
         "turn_count": len(turns),
         "turns": turns,
         "segments": labeled_segments,
+        "quality_report_path": str(quality_report_path),
         "created_at": utc_now(),
     }
     output_path = Path(manifest["artifacts"]["speakers_path"])
@@ -114,6 +147,7 @@ def build_speaker_artifacts(
         "speaker_count": speaker_count,
         "turn_count": len(turns),
         "backend": payload["backend"],
+        "quality_report_path": str(quality_report_path),
         "completed_at": utc_now(),
     }
     manifest["updated_at"] = utc_now()
@@ -194,16 +228,28 @@ def _stable_speaker_labels(labels: np.ndarray, segments: list[dict[str, Any]]) -
 def _merge_turns(segments: list[dict[str, Any]]) -> list[dict[str, Any]]:
     turns = []
     for segment in segments:
+        segment_quality = float(segment.get("quality_score", 0.7))
         can_merge = (
             turns
             and turns[-1]["speaker_id"] == segment["speaker_id"]
-            and segment["start_ms"] - turns[-1]["end_ms"] <= 1500
+            and segment["start_ms"] - turns[-1]["end_ms"] <= SPEAKER_MERGE_GAP_MS
             and segment["end_ms"] - turns[-1]["start_ms"] <= 30_000
             and turns[-1].get("parent_chunk_id") == segment.get("parent_chunk_id")
         )
         if can_merge:
             turns[-1]["end_ms"] = segment["end_ms"]
             turns[-1]["segment_ids"].append(segment["segment_id"])
+            turns[-1]["parent_atom_ids"] = sorted(set(turns[-1].get("parent_atom_ids", [])) | set(segment.get("parent_atom_ids", [])))
+            turns[-1]["quality_score"] = round(
+                sum(segment_quality for segment_quality in [
+                    *turns[-1].get("_segment_quality_values", []),
+                    segment_quality,
+                ])
+                / (len(turns[-1].get("_segment_quality_values", [])) + 1),
+                4,
+            )
+            turns[-1].setdefault("_segment_quality_values", []).append(segment_quality)
+            turns[-1]["quality_flags"] = _speaker_quality_flags(turns[-1]["end_ms"] - turns[-1]["start_ms"], turns[-1]["quality_score"])
             turns[-1]["text"] = " ".join([turns[-1]["text"], segment["text"]]).strip()
             continue
         turns.append(
@@ -212,19 +258,26 @@ def _merge_turns(segments: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 "speaker_id": segment["speaker_id"],
                 "start_ms": segment["start_ms"],
                 "end_ms": segment["end_ms"],
+                "duration_ms": segment["end_ms"] - segment["start_ms"],
                 "segment_ids": [segment["segment_id"]],
                 "text": segment["text"],
                 "atom_id": segment.get("atom_id"),
+                "parent_atom_ids": segment.get("parent_atom_ids", []),
                 "parent_chunk_id": segment.get("parent_chunk_id"),
                 "parent_event_id": segment.get("parent_event_id"),
+                "quality_score": segment_quality,
+                "quality_flags": _speaker_quality_flags(segment["end_ms"] - segment["start_ms"], segment_quality),
+                "_segment_quality_values": [segment_quality],
             }
         )
+    for turn in turns:
+        turn["duration_ms"] = turn["end_ms"] - turn["start_ms"]
+        turn.pop("_segment_quality_values", None)
     return turns
 
 
 def _attach_speakers_to_atoms(manifest: dict[str, Any], segments: list[dict[str, Any]]) -> None:
     from .json_artifacts import read_json
-    from .modality_common import overlap_ms
 
     path = Path(manifest["artifacts"]["atoms_path"])
     payload = read_json(path)
@@ -243,3 +296,22 @@ def _attach_speakers_to_atoms(manifest: dict[str, Any], segments: list[dict[str,
     }
     payload["updated_at"] = utc_now()
     write_json_atomic(path, payload)
+
+
+def _segment_quality(segment: dict[str, Any], clustering_score: float) -> float:
+    duration_ms = segment["end_ms"] - segment["start_ms"]
+    duration_score = min(1.0, duration_ms / 3000)
+    text_score = min(1.0, len(segment.get("text", "").split()) / 10)
+    cluster_score = max(0.0, min(1.0, float(clustering_score)))
+    return round((0.45 * cluster_score) + (0.30 * duration_score) + (0.25 * text_score), 4)
+
+
+def _speaker_quality_flags(duration_ms: int, quality_score: float) -> list[str]:
+    flags = []
+    if duration_ms < SPEAKER_MIN_TURN_MS:
+        flags.append("short_turn")
+    if quality_score < SPEAKER_MIN_TURN_QUALITY:
+        flags.append("low_confidence")
+    if duration_ms > 30_000:
+        flags.append("long_merged_turn")
+    return flags

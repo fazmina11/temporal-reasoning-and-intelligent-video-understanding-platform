@@ -92,10 +92,12 @@ def canonicalize_citation_evidence(
     record = registry.get((source_type, source_id)) or _fallback_record(video_id, item, source_type, source_id)
     duration_ms = _duration_ms(repo_root, video_id)
     anchor = _select_anchor(record, item, temporal_context, question, registry)
-    citation_interval = _citation_interval(record, item, source_type, duration_ms)
+    source_interval = _citation_interval(record, item, source_type, duration_ms)
+    citation_interval = _anchor_interval(anchor, duration_ms)
     context_window = _context_window(anchor, temporal_context, duration_ms)
     return {
         **item,
+        "text": str(anchor.get("text") or item.get("text") or item.get("transcript") or ""),
         "citation_id": citation_id,
         "evidence_id": record["evidence_id"],
         "canonical_source_type": record["canonical_source_type"],
@@ -106,6 +108,7 @@ def canonicalize_citation_evidence(
         "evidence_anchor": anchor,
         "answer_context_window": context_window,
         "citation_interval": citation_interval,
+        "source_interval": source_interval,
         "parent_atom_ids": record.get("parent_atom_ids", []),
         "parent_chunk_id": record.get("parent_chunk_id") or item.get("parent_chunk_id"),
         "parent_event_id": record.get("parent_event_id") or item.get("parent_event_id"),
@@ -406,6 +409,14 @@ def _select_anchor(
         return _interval_with_score(record["start_ms"], record["end_ms"], 0.9, "source_interval")
     parent_atom_ids = set(record.get("parent_atom_ids") or [])
     expanded_atoms = temporal_context.get("expanded_atoms") or []
+    if _is_comparison_question(question):
+        comparison_anchor = _comparison_atom_window(
+            expanded_atoms=expanded_atoms,
+            parent_atom_ids=parent_atom_ids,
+            question=question,
+        )
+        if comparison_anchor is not None:
+            return comparison_anchor
     terms = _terms(question)
     best_atom = None
     best_score = -1.0
@@ -426,6 +437,57 @@ def _select_anchor(
     return _interval_with_score(record["start_ms"], record["end_ms"], 0.55, "source_start")
 
 
+def _comparison_atom_window(
+    *,
+    expanded_atoms: list[dict[str, Any]],
+    parent_atom_ids: set[str],
+    question: str,
+    max_atoms: int = 4,
+) -> dict[str, int | float | str] | None:
+    atoms = [
+        atom
+        for atom in sorted(expanded_atoms, key=lambda value: int(value.get("start_ms", 0)))
+        if not parent_atom_ids or atom.get("atom_id") in parent_atom_ids
+    ]
+    terms = _comparison_terms(question)
+    if not atoms or len(terms) < 2:
+        return None
+
+    best: tuple[float, int, int, int] | None = None
+    for start_index in range(len(atoms)):
+        for size in range(1, min(max_atoms, len(atoms) - start_index) + 1):
+            window = atoms[start_index : start_index + size]
+            text = " ".join(str(atom.get("transcript_text", "")) for atom in window).lower()
+            coverage = sum(_term_matches_text(term, text) for term in terms) / len(terms)
+            if coverage < 0.5:
+                continue
+            duration_ms = int(window[-1]["end_ms"]) - int(window[0]["start_ms"])
+            # Coverage dominates; shorter, denser evidence wins ties.
+            score = coverage - (size - 1) * 0.015 - min(duration_ms, 60_000) / 6_000_000
+            candidate = (score, -size, -duration_ms, -start_index)
+            if best is None or candidate > best:
+                best = candidate
+                best_window = window
+
+    if best is None:
+        return None
+    coverage_score = max(0.55, min(0.98, 0.55 + max(0.0, best[0]) * 0.4))
+    return {
+        **_interval_with_score(
+            int(best_window[0]["start_ms"]),
+            int(best_window[-1]["end_ms"]),
+            coverage_score,
+            "comparison_atom_window",
+        ),
+        "atom_ids": [str(atom.get("atom_id")) for atom in best_window if atom.get("atom_id")],
+        "text": " ".join(
+            str(atom.get("transcript_text", "")).strip()
+            for atom in best_window
+            if str(atom.get("transcript_text", "")).strip()
+        ),
+    }
+
+
 def _citation_interval(record: dict[str, Any], item: dict[str, Any], source_type: str, duration_ms: int) -> dict[str, int]:
     start, end = int(record["start_ms"]), int(record["end_ms"])
     if source_type == "audio_event":
@@ -435,6 +497,15 @@ def _citation_interval(record: dict[str, Any], item: dict[str, Any], source_type
         start = max(0, start)
         end = min(duration_ms or end, max(start + 1, end))
     return {"start_ms": start, "end_ms": max(start + 1, end)}
+
+
+def _anchor_interval(anchor: dict[str, Any], duration_ms: int) -> dict[str, int]:
+    start = max(0, int(anchor["start_ms"]))
+    end = max(start + 1, int(anchor["end_ms"]))
+    if duration_ms:
+        start = min(start, max(0, duration_ms - 1))
+        end = min(duration_ms, max(start + 1, end))
+    return {"start_ms": start, "end_ms": end}
 
 
 def _context_window(anchor: dict[str, Any], temporal_context: dict[str, Any], duration_ms: int) -> dict[str, int]:
@@ -513,3 +584,34 @@ def _valid_interval(value: Any, duration_ms: int | None = None) -> bool:
 def _terms(text: str) -> set[str]:
     stop = {"what", "where", "when", "why", "how", "does", "did", "the", "and", "from", "that", "this", "with", "about", "tell"}
     return {term.lower() for term in re.findall(r"[A-Za-z0-9]{3,}", text) if term.lower() not in stop}
+
+
+def _is_comparison_question(text: str) -> bool:
+    return bool(re.search(r"\b(?:compare|compared|comparison|versus|vs)\b", text, re.I))
+
+
+def _comparison_terms(text: str) -> set[str]:
+    stop = {
+        "what", "where", "when", "why", "how", "does", "did", "the", "and",
+        "from", "that", "this", "with", "about", "tell", "compare", "compared",
+        "comparison", "versus",
+    }
+    return {
+        _stem(term.lower())
+        for term in re.findall(r"[A-Za-z0-9]{3,}", text)
+        if term.lower() not in stop
+    }
+
+
+def _term_matches_text(term: str, text: str) -> bool:
+    return any(
+        _stem(token.lower()) == term
+        for token in re.findall(r"[A-Za-z0-9]{3,}", text)
+    )
+
+
+def _stem(term: str) -> str:
+    for suffix in ("ization", "ation", "ing", "ed", "es", "s"):
+        if len(term) > len(suffix) + 3 and term.endswith(suffix):
+            return term[: -len(suffix)]
+    return term

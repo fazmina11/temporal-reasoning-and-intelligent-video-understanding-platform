@@ -30,6 +30,7 @@ SourceType: TypeAlias = Literal[
     "event",
     "ocr",
     "speaker",
+    "speaker_turn",
     "audio_event",
     "frame",
     "clip",
@@ -58,7 +59,7 @@ _VALID_OUTCOMES = frozenset((
     "system_error",
 ))
 _VALID_SOURCE_TYPES = frozenset((
-    "semantic_chunk", "atom", "event", "ocr", "speaker", "audio_event", "frame", "clip",
+    "semantic_chunk", "atom", "event", "ocr", "speaker", "speaker_turn", "audio_event", "frame", "clip",
 ))
 _VALID_QUERY_TYPES = frozenset((
     "definition", "concept", "exact_timestamp", "visual_memory", "ocr_or_slide_text",

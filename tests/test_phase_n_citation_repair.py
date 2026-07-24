@@ -8,6 +8,7 @@ from src.pipeline.agentic.citation_registry import (
     validate_citation_objects,
 )
 from src.pipeline.agentic.claim_verifier import verify_claims
+from src.pipeline.agentic.answer_generator import GroundedAnswerGenerator
 from src.pipeline.agentic.evidence_packet import build_evidence_packet
 from src.pipeline.json_artifacts import write_json_atomic
 
@@ -56,6 +57,30 @@ class PhaseNCitationRepairTests(unittest.TestCase):
                         "parent_event_id": "event_1",
                         "transcript_text": "The speaker explains MCP as a protocol for context and tools.",
                     },
+                    {
+                        "atom_id": "atom_3",
+                        "start_ms": 20_000,
+                        "end_ms": 24_000,
+                        "semantic_chunk_id": "chunk_1",
+                        "parent_event_id": "event_1",
+                        "transcript_text": "That is the value of standardization.",
+                    },
+                    {
+                        "atom_id": "atom_4",
+                        "start_ms": 24_000,
+                        "end_ms": 27_000,
+                        "semantic_chunk_id": "chunk_1",
+                        "parent_event_id": "event_1",
+                        "transcript_text": "HTTP made websites interoperable.",
+                    },
+                    {
+                        "atom_id": "atom_5",
+                        "start_ms": 27_000,
+                        "end_ms": 30_000,
+                        "semantic_chunk_id": "chunk_1",
+                        "parent_event_id": "event_1",
+                        "transcript_text": "MCP makes AI environments interoperable.",
+                    },
                 ]
             },
         )
@@ -68,7 +93,7 @@ class PhaseNCitationRepairTests(unittest.TestCase):
                         "start_ms": 0,
                         "end_ms": 20_000,
                         "parent_event_id": "event_1",
-                        "atom_ids": ["atom_1", "atom_2"],
+                        "atom_ids": ["atom_1", "atom_2", "atom_3", "atom_4", "atom_5"],
                         "title": "MCP explanation",
                         "transcript_text": "The speaker explains MCP as a protocol for context and tools.",
                     }
@@ -83,7 +108,7 @@ class PhaseNCitationRepairTests(unittest.TestCase):
                         "event_id": "event_1",
                         "start_ms": 0,
                         "end_ms": 20_000,
-                        "atom_ids": ["atom_1", "atom_2"],
+                        "atom_ids": ["atom_1", "atom_2", "atom_3", "atom_4", "atom_5"],
                         "title": "MCP event",
                         "transcript_text": "The speaker explains MCP.",
                     }
@@ -147,7 +172,9 @@ class PhaseNCitationRepairTests(unittest.TestCase):
         )
         citation = packet["citations"][0]
         self.assertEqual(citation["evidence_anchor"]["start_ms"], 10_000)
-        self.assertEqual(citation["citation_interval"]["start_ms"], 0)
+        self.assertEqual(citation["citation_interval"]["start_ms"], 10_000)
+        self.assertEqual(citation["start_ms"], 10_000)
+        self.assertEqual(citation["source_interval"]["start_ms"], 0)
         self.assertTrue(packet["citation_validation"]["valid"])
 
     def test_claim_verifier_rejects_incompatible_visible_text_source(self) -> None:
@@ -169,6 +196,73 @@ class PhaseNCitationRepairTests(unittest.TestCase):
         self.assertFalse(result["passed"])
         self.assertIn("S1", result["incompatible_citations"])
         self.assertFalse(citation_source_compatible("The slide text says MCP [S1].", packet["verified_evidence"][0]))
+
+    def test_comparison_uses_contiguous_multi_atom_anchor_and_grounded_excerpt(self) -> None:
+        evidence = [
+            {
+                "candidate_id": "cand_1",
+                "video_id": self.video_id,
+                "source_type": "semantic_chunk",
+                "source_id": "chunk_1",
+                "start_ms": 0,
+                "end_ms": 30_000,
+                "parent_chunk_id": "chunk_1",
+                "parent_event_id": "event_1",
+                "text": (
+                    "That is the value of standardization. "
+                    "HTTP made websites interoperable. "
+                    "MCP makes AI environments interoperable."
+                ),
+                "support_score": 0.9,
+            }
+        ]
+        expanded_atoms = [
+            {
+                "atom_id": f"atom_{index}",
+                "start_ms": start,
+                "end_ms": end,
+                "transcript_text": text,
+            }
+            for index, start, end, text in (
+                (1, 0, 10_000, "The speaker introduces context."),
+                (2, 10_000, 20_000, "The speaker explains MCP as a protocol."),
+                (3, 20_000, 24_000, "That is the value of standardization."),
+                (4, 24_000, 27_000, "HTTP made websites interoperable."),
+                (5, 27_000, 30_000, "MCP makes AI environments interoperable."),
+            )
+        ]
+        question = "How is MCP compared to HTTP standardization?"
+        packet = build_evidence_packet(
+            request={"video_id": self.video_id, "query": question, "answer_mode": "strict_video"},
+            outcome_candidate="answer",
+            verified_evidence=evidence,
+            temporal_context={
+                "primary_moment": {
+                    "source_type": "semantic_chunk",
+                    "source_id": "chunk_1",
+                    "start_ms": 0,
+                    "end_ms": 30_000,
+                },
+                "expanded_atoms": expanded_atoms,
+            },
+            answerability={"decision": "answer", "score": 0.9},
+            repo_root=self.repo,
+            query_understanding={
+                "standalone_query": question,
+                "query_types": ["comparison"],
+            },
+        )
+        citation = packet["citations"][0]
+        self.assertEqual(citation["start_ms"], 20_000)
+        self.assertEqual(citation["end_ms"], 30_000)
+        self.assertEqual(citation["evidence_anchor"]["reason"], "comparison_atom_window")
+
+        generator = GroundedAnswerGenerator()
+        generator.client = None
+        generation = generator.generate(packet)
+        self.assertIn("HTTP", generation["answer"])
+        self.assertIn("MCP", generation["answer"])
+        self.assertTrue(verify_claims(generation["answer"], packet)["passed"])
 
     def test_citation_validation_catches_bad_intervals(self) -> None:
         result = validate_citation_objects(

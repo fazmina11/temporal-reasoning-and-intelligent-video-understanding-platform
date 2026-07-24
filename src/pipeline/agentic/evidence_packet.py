@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import re
 from typing import Any
 
 from .citation_registry import canonicalize_citation_evidence, validate_citation_objects
@@ -16,7 +17,11 @@ def build_evidence_packet(
     repo_root: Path | None = None,
     query_understanding: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    ordered_evidence = _order_evidence(verified_evidence, temporal_context)
+    ordered_evidence = _order_evidence(
+        verified_evidence,
+        temporal_context,
+        query_understanding or {},
+    )
     citations = []
     evidence_items = []
     for index, item in enumerate(ordered_evidence[:8], start=1):
@@ -46,6 +51,7 @@ def build_evidence_packet(
                 "evidence_anchor": canonical["evidence_anchor"],
                 "answer_context_window": canonical["answer_context_window"],
                 "citation_interval": canonical["citation_interval"],
+                "source_interval": canonical.get("source_interval", canonical["citation_interval"]),
                 "parent_atom_ids": canonical.get("parent_atom_ids", []),
                 "parent_chunk_id": canonical.get("parent_chunk_id"),
                 "parent_event_id": canonical.get("parent_event_id"),
@@ -64,7 +70,10 @@ def build_evidence_packet(
                 "evidence_anchor": canonical["evidence_anchor"],
                 "answer_context_window": canonical["answer_context_window"],
                 "citation_interval": canonical["citation_interval"],
-                "text": _clip_text(canonical.get("transcript") or canonical.get("text") or ""),
+                "source_interval": canonical.get("source_interval", canonical["citation_interval"]),
+                "text": _clean_evidence_text(
+                    canonical.get("text") or canonical.get("transcript") or ""
+                ),
                 "visual_summary": canonical.get("visual_summary") or "",
                 "media_refs": _safe_media_refs(canonical.get("media_refs") or {}),
                 "support_score": canonical.get("support_score", 0.0),
@@ -115,19 +124,150 @@ def _clip_text(text: str, limit: int = 900) -> str:
     return text[:limit]
 
 
-def _order_evidence(verified_evidence: list[dict[str, Any]], temporal_context: dict[str, Any]) -> list[dict[str, Any]]:
+def _clean_evidence_text(text: str, limit: int = 900) -> str:
+    value = str(text).strip()
+    if re.match(r"^Atom\s+\S+\s+from\s+\d+\s+ms\s+to\s+\d+\s+ms\.", value):
+        value = value.split("\n", 1)[1] if "\n" in value else value
+    value = re.split(r"\n(?:Boundary reasons|Frames):", value, maxsplit=1)[0]
+    return _clip_text(value, limit)
+
+
+def _order_evidence(
+    verified_evidence: list[dict[str, Any]],
+    temporal_context: dict[str, Any],
+    query_understanding: dict[str, Any],
+) -> list[dict[str, Any]]:
     primary = temporal_context.get("primary_moment") or {}
     primary_key = (primary.get("source_type"), primary.get("source_id"))
+    query_types = set(query_understanding.get("query_types") or [])
+    if "ocr_or_slide_text" in query_types:
+        source_priority = {"ocr": 0, "atom": 1, "semantic_chunk": 2, "visual_chunk": 3, "event": 4}
+    elif "visual_memory" in query_types:
+        source_priority = {
+            "ocr": 0,
+            "visual_chunk": 0,
+            "atom": 0,
+            "semantic_chunk": 0,
+            "event": 0,
+        }
+    elif "exact_timestamp" in query_types:
+        source_priority = {"atom": 0, "semantic_chunk": 1, "speaker_turn": 2, "event": 3, "ocr": 4, "visual_chunk": 5}
+    elif "comparison" in query_types:
+        # Comparisons commonly cross an atomic boundary: one atom introduces
+        # side A and the next connects side B. Rank the coherent semantic unit
+        # first, then let citation canonicalization select its strongest atom.
+        source_priority = {
+            "semantic_chunk": 0,
+            "event": 0,
+            "atom": 1,
+            "speaker_turn": 2,
+            "visual_chunk": 3,
+            "ocr": 4,
+        }
+    else:
+        source_priority = {
+            "atom": 0,
+            "semantic_chunk": 1,
+            "speaker_turn": 2,
+            "event": 3,
+            "visual_chunk": 4,
+            "ocr": 5,
+        }
+    query = str(
+        query_understanding.get("standalone_query")
+        or query_understanding.get("raw_query")
+        or ""
+    )
+    terms = _ranking_terms(query)
+    entity_terms = {
+        _stem(token)
+        for entity in query_understanding.get("entities") or []
+        if str(entity).strip().lower() in {"mcp", "api", "apis", "model context protocol"}
+        for token in re.findall(r"[A-Za-z0-9]{3,}", str(entity).lower())
+    }
+    focused_terms = terms - entity_terms
+    if focused_terms:
+        terms = focused_terms
+    definition_query = bool(
+        {"definition", "concept"} & query_types
+        or re.match(r"\s*(?:what is|what does|define|meaning of)\b", query, re.I)
+    )
 
-    def key(item: dict[str, Any]) -> tuple[int, float, int]:
+    def key(item: dict[str, Any]) -> tuple[int, float, int, float, int, int]:
         is_primary = (item.get("source_type"), item.get("source_id")) == primary_key
+        text = _clean_evidence_text(
+            item.get("text") or item.get("transcript") or ""
+        ).lower()
+        if query_types & {"ocr_or_slide_text", "visual_memory"}:
+            text = f"{text} {item.get('visual_summary') or ''}".lower()
+        overlap = sum(_term_present(term, text) for term in terms) / max(1, len(terms))
+        definition_bonus = 0.0
+        if definition_query:
+            definition_bonus = _definition_relation_bonus(text, terms)
+        lexical_score = overlap + definition_bonus
         return (
-            0 if is_primary else 1,
+            source_priority.get(str(item.get("source_type")), 10),
+            -lexical_score,
+            max(1, int(item.get("end_ms", 0)) - int(item.get("start_ms", 0))),
             -float(item.get("support_score", item.get("rerank_score", 0.0)) or 0.0),
+            0 if is_primary else 1,
             int(item.get("start_ms", 0)),
         )
 
     return sorted(verified_evidence, key=key)
+
+
+def _ranking_terms(text: str) -> set[str]:
+    stop = {
+        "what", "where", "when", "why", "how", "does", "did", "the", "and",
+        "from", "that", "this", "with", "about", "tell", "lecture", "speaker",
+        "video", "appears", "appear", "shown", "show", "visual", "text", "slide",
+        "described", "explain", "explanation", "compared", "meant",
+    }
+    return {
+        _stem(term)
+        for term in re.findall(r"[A-Za-z0-9]{3,}", text.lower())
+        if term not in stop
+    }
+
+
+def _term_present(term: str, text: str) -> bool:
+    for token in re.findall(r"[A-Za-z0-9]{3,}", text.lower()):
+        stemmed = _stem(token)
+        if stemmed == term:
+            return True
+        if min(len(stemmed), len(term)) >= 5 and (
+            stemmed.startswith(term) or term.startswith(stemmed)
+        ):
+            return True
+    return False
+
+
+def _definition_relation_bonus(text: str, terms: set[str]) -> float:
+    for term in terms:
+        escaped = re.escape(term)
+        if re.search(
+            rf"\b{escaped}\w*\b.{{0,35}}\b(?:means|refers to|includes|which includes)\b|"
+            rf"\b(?:means|refers to|includes|which includes)\b.{{0,35}}\b{escaped}\w*\b",
+            text,
+        ):
+            return 0.25
+    for term in terms:
+        escaped = re.escape(term)
+        if re.search(
+            rf"\b{escaped}\w*\b.{{0,24}}\b(?:is|gives|provides)\b|"
+            rf"\b(?:is|gives|provides)\b.{{0,24}}\b{escaped}\w*\b",
+            text,
+        ):
+            return 0.12
+    return 0.0
+
+
+def _stem(term: str) -> str:
+    for suffix in ("ization", "ation", "ing", "ed", "es", "s"):
+        if len(term) > len(suffix) + 3 and term.endswith(suffix):
+            return term[: -len(suffix)]
+    return term
 
 
 def _safe_media_refs(media_refs: dict[str, Any]) -> dict[str, Any]:
@@ -150,4 +290,3 @@ def _missing_notes(answerability: dict[str, Any], temporal_context: dict[str, An
     if not temporal_context.get("primary_moment"):
         notes.append("no primary moment found")
     return notes
-

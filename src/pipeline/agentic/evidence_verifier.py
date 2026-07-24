@@ -103,6 +103,13 @@ def _rejection_reasons(
         reasons.append("missing_speaker_artifact")
     if "audio" in required_modalities and not (candidate.get("source_type") == "audio_event" or (candidate.get("media_refs") or {}).get("audio_event")):
         reasons.append("missing_audio_artifact")
+    quality = _quality(candidate)
+    if source_type == "ocr" and quality is not None and quality < 0.55:
+        reasons.append("low_ocr_confidence")
+    if source_type == "speaker_turn" and quality is not None and quality < 0.55:
+        reasons.append("low_speaker_confidence")
+    if source_type == "audio_event" and quality is not None and quality < 0.58:
+        reasons.append("low_audio_confidence")
     if terms and _support_score(candidate, terms, required_modalities) < 0.08:
         reasons.append("weak_query_match")
     return reasons
@@ -119,7 +126,9 @@ def _support_score(candidate: dict[str, Any], terms: set[str], required_modaliti
     retrieval_score = float((candidate.get("retrieval") or {}).get("raw_score", 0.0) or 0.0)
     fused = float(candidate.get("rerank_score", candidate.get("fused_score", 0.0)) or 0.0)
     modality_score = 0.15 if "visual" not in required_modalities or candidate.get("visual_summary") or (candidate.get("media_refs") or {}).get("frames") else 0.0
-    return min(1.0, (0.45 * term_score) + (0.25 * retrieval_score) + min(0.15, fused) + modality_score)
+    quality_score = _quality(candidate)
+    quality_bonus = 0.08 * quality_score if quality_score is not None else 0.04
+    return min(1.0, (0.42 * term_score) + (0.23 * retrieval_score) + min(0.15, fused) + modality_score + quality_bonus)
 
 
 def _evidence_types(candidate: dict[str, Any]) -> list[str]:
@@ -142,3 +151,14 @@ def _evidence_types(candidate: dict[str, Any]) -> list[str]:
 def _terms(text: str) -> set[str]:
     stop = {"what", "where", "when", "why", "how", "does", "did", "the", "and", "from", "that", "this", "with", "about", "tell", "after", "before"}
     return {term.lower() for term in re.findall(r"[A-Za-z0-9]{3,}", text) if term.lower() not in stop}
+
+
+def _quality(candidate: dict[str, Any]) -> float | None:
+    direct = candidate.get("quality_score")
+    if isinstance(direct, (int, float)) and not isinstance(direct, bool):
+        return max(0.0, min(1.0, float(direct)))
+    retrieval = candidate.get("retrieval") or {}
+    raw = retrieval.get("raw_score")
+    if isinstance(raw, (int, float)) and not isinstance(raw, bool):
+        return max(0.0, min(1.0, float(raw)))
+    return None

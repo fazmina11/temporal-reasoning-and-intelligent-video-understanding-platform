@@ -57,6 +57,54 @@ class AgenticScopeRouterTests(unittest.TestCase):
         )
         self.assertEqual(decision["policy_action"], ScopeAction.ABSTAIN_UNRELATED)
 
+    def test_unrelated_temporal_general_query_does_not_leak_through(self) -> None:
+        understanding = understand_query(raw_query="What was the weather during the lecture?")
+        decision = route_scope(
+            repo_root=self.repo,
+            video_id="video_1",
+            query_understanding=understanding,
+            answer_mode=AnswerMode.STRICT_VIDEO,
+        )
+        self.assertEqual(decision["policy_action"], ScopeAction.ABSTAIN_UNRELATED)
+
+    def test_strong_topic_match_retrieves_even_when_scope_score_is_borderline(self) -> None:
+        understanding = understand_query(raw_query="What does MCP API integration mean?")
+        decision = route_scope(
+            repo_root=self.repo,
+            video_id="video_1",
+            query_understanding=understanding,
+            answer_mode=AnswerMode.STRICT_VIDEO,
+        )
+        self.assertEqual(decision["policy_action"], ScopeAction.RETRIEVE_VIDEO)
+
+    def test_this_lecture_is_not_treated_as_unresolved_followup(self) -> None:
+        resolved = resolve_conversation_references(
+            raw_query="What does MCP mean in this lecture?",
+            conversation_context=[],
+        )
+        understanding = understand_query(
+            raw_query="What does MCP mean in this lecture?",
+            standalone_query=resolved["standalone_query"],
+            conversation_resolution=resolved,
+        )
+        decision = route_scope(
+            repo_root=self.repo,
+            video_id="video_1",
+            query_understanding=understanding,
+            answer_mode=AnswerMode.STRICT_VIDEO,
+        )
+        self.assertEqual(decision["policy_action"], ScopeAction.RETRIEVE_VIDEO)
+
+    def test_unanchored_slide_question_requests_clarification(self) -> None:
+        understanding = understand_query(raw_query="What was on the slide?")
+        decision = route_scope(
+            repo_root=self.repo,
+            video_id="video_1",
+            query_understanding=understanding,
+            answer_mode=AnswerMode.STRICT_VIDEO,
+        )
+        self.assertEqual(decision["policy_action"], ScopeAction.CLARIFY)
+
     def test_unrelated_query_routes_general_in_hybrid_mode(self) -> None:
         understanding = understand_query(raw_query="What is today's weather?")
         decision = route_scope(

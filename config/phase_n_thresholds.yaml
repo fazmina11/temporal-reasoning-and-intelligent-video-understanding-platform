@@ -1,0 +1,63 @@
+schema_version: phase-n-thresholds-v1
+scope:
+  strict_unrelated_threshold: 0.12
+  probable_related_threshold: 0.34
+  reference_resolution_threshold: 0.72
+
+retrieval:
+  dense_top_k: 25
+  sparse_top_k: 25
+  modality_top_k: 15
+  rerank_top_k: 12
+  final_evidence_k: 6
+  rrf_k: 60
+
+corrective_retrieval:
+  max_normal_retries: 1
+  allow_exact_search_fallback: true
+  max_extra_candidates: 20
+
+answerability:
+  answerable_threshold: 0.72
+  partial_threshold: 0.55
+  retry_threshold: 0.38
+  not_found_threshold: 0.24
+  contradiction_threshold: 0.55
+
+deduplication:
+  merge_tiou_threshold: 0.70
+  suppress_tiou_threshold: 0.85
+  semantic_duplicate_threshold: 0.92
+
+ocr:
+  minimum_track_quality: 0.55
+  persistent_overlay_ratio: 0.75
+  temporal_merge_gap_ms: 800
+
+speaker:
+  minimum_turn_quality: 0.55
+  same_speaker_merge_gap_ms: 700
+  minimum_turn_ms: 500
+
+audio:
+  minimum_event_quality: 0.58
+  merge_gap_ms: 500
+
+citation:
+  minimum_entailment_score: 0.70
+  minimum_claim_coverage: 0.90
+
+confidence:
+  high_threshold: 0.80
+  moderate_threshold: 0.55
+
+release_gates:
+  outcome_accuracy_min: 0.90
+  negative_abstention_min: 0.95
+  timestamp_hit_rate_min: 0.85
+  citation_presence_rate_min: 0.95
+  citation_validity_rate_min: 0.98
+  required_term_coverage_min: 0.90
+  unsupported_claim_rate_max: 0.03
+  fallback_rate_max: 0.35
+  execution_failures_max: 0
