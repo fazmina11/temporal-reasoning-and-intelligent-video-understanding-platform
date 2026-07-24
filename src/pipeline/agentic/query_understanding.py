@@ -139,12 +139,15 @@ def understand_query(*, raw_query: str, standalone_query: str | None = None) -> 
     if not query_types:
         query_types.add("unknown")
 
+    is_episodic = is_episodic_memory_query(query, sorted(query_types))
+
     return {
         "query_id": f"query_{uuid4().hex[:12]}",
         "raw_query": raw_query,
         "standalone_query": query,
         "normalized_query": _normalize(query),
         "query_types": sorted(query_types),
+        "is_episodic_memory": is_episodic,
         "entities": entities,
         "persons": [],
         "objects": visual_hints,
@@ -162,6 +165,42 @@ def understand_query(*, raw_query: str, standalone_query: str | None = None) -> 
         "requires_event_search": bool(query_types & {"summary", "comparison", "cause_effect", "definition", "concept"}),
         "classification_confidence": 0.85 if "unknown" not in query_types else 0.45,
     }
+
+
+EXPLICIT_QUESTION_PREFIXES = ("what ", "where ", "who ", "when ", "why ", "how ", "which ")
+EPISODIC_MEMORY_PHRASES = (
+    "i remember",
+    "i recall",
+    "i vaguely remember",
+    "there was",
+    "there were",
+    "he showed",
+    "she showed",
+    "they showed",
+)
+
+
+def is_episodic_memory_query(query: str, query_types: Sequence[str] | None = None) -> bool:
+    """Return True if query describes vague episodic memory instead of explicit factual questions."""
+    lowered = query.lower().strip()
+    if any(lowered.startswith(prefix) for prefix in EXPLICIT_QUESTION_PREFIXES):
+        return False
+
+    if any(phrase in lowered for phrase in EPISODIC_MEMORY_PHRASES):
+        return True
+
+    try:
+        from ..memory_recovery.memory_parser import parse_memory_query
+
+        parsed = parse_memory_query(query)
+        if (parsed.colors or parsed.spatial_clues) and (parsed.objects or parsed.visual_clues):
+            return True
+    except Exception:
+        pass
+
+    return False
+
+
 
 
 def _normalize(text: str) -> str:

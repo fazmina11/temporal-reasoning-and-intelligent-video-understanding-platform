@@ -1,0 +1,854 @@
+{
+  "failures": [
+    {
+      "confidence": 0.85,
+      "error_message": null,
+      "expected_outcome": "unrelated_to_video",
+      "latency_ms": 0.0,
+      "predicted_outcome": "grounded_answer",
+      "query": "What was the weather during the lecture recording?",
+      "question_id": "qa_000041",
+      "success": true
+    },
+    {
+      "confidence": 0.85,
+      "error_message": null,
+      "expected_outcome": "unrelated_to_video",
+      "latency_ms": 0.001,
+      "predicted_outcome": "grounded_answer",
+      "query": "Who won the most recent FIFA World Cup?",
+      "question_id": "qa_000042",
+      "success": true
+    },
+    {
+      "confidence": 0.85,
+      "error_message": null,
+      "expected_outcome": "unrelated_to_video",
+      "latency_ms": 0.0,
+      "predicted_outcome": "grounded_answer",
+      "query": "What is the capital city of Japan?",
+      "question_id": "qa_000043",
+      "success": true
+    },
+    {
+      "confidence": 0.85,
+      "error_message": null,
+      "expected_outcome": "unrelated_to_video",
+      "latency_ms": 0.0,
+      "predicted_outcome": "grounded_answer",
+      "query": "What is the current price of Bitcoin?",
+      "question_id": "qa_000044",
+      "success": true
+    },
+    {
+      "confidence": 0.85,
+      "error_message": null,
+      "expected_outcome": "unrelated_to_video",
+      "latency_ms": 0.0,
+      "predicted_outcome": "grounded_answer",
+      "query": "Can you recommend a restaurant in Mumbai?",
+      "question_id": "qa_000045",
+      "success": true
+    },
+    {
+      "confidence": 0.85,
+      "error_message": null,
+      "expected_outcome": "unrelated_to_video",
+      "latency_ms": 0.001,
+      "predicted_outcome": "grounded_answer",
+      "query": "What are today's stock-market winners?",
+      "question_id": "qa_000046",
+      "success": true
+    },
+    {
+      "confidence": 0.85,
+      "error_message": null,
+      "expected_outcome": "unrelated_to_video",
+      "latency_ms": 0.001,
+      "predicted_outcome": "grounded_answer",
+      "query": "Write a birthday poem for my friend.",
+      "question_id": "qa_000047",
+      "success": true
+    },
+    {
+      "confidence": 0.85,
+      "error_message": null,
+      "expected_outcome": "unrelated_to_video",
+      "latency_ms": 0.001,
+      "predicted_outcome": "grounded_answer",
+      "query": "How do I change a flat tire?",
+      "question_id": "qa_000048",
+      "success": true
+    },
+    {
+      "confidence": 0.85,
+      "error_message": null,
+      "expected_outcome": "unrelated_to_video",
+      "latency_ms": 0.0,
+      "predicted_outcome": "grounded_answer",
+      "query": "What is the best recipe for pancakes?",
+      "question_id": "qa_000049",
+      "success": true
+    },
+    {
+      "confidence": 0.85,
+      "error_message": null,
+      "expected_outcome": "unrelated_to_video",
+      "latency_ms": 0.001,
+      "predicted_outcome": "grounded_answer",
+      "query": "What is the population of Brazil?",
+      "question_id": "qa_000050",
+      "success": true
+    },
+    {
+      "confidence": 0.85,
+      "error_message": null,
+      "expected_outcome": "clarification_required",
+      "latency_ms": 0.002,
+      "predicted_outcome": "grounded_answer",
+      "query": "What does that mean?",
+      "question_id": "qa_000051",
+      "success": true
+    },
+    {
+      "confidence": 0.85,
+      "error_message": null,
+      "expected_outcome": "clarification_required",
+      "latency_ms": 0.001,
+      "predicted_outcome": "grounded_answer",
+      "query": "When did he explain it?",
+      "question_id": "qa_000052",
+      "success": true
+    },
+    {
+      "confidence": 0.85,
+      "error_message": null,
+      "expected_outcome": "clarification_required",
+      "latency_ms": 0.001,
+      "predicted_outcome": "grounded_answer",
+      "query": "What was on the slide?",
+      "question_id": "qa_000053",
+      "success": true
+    },
+    {
+      "confidence": 0.85,
+      "error_message": null,
+      "expected_outcome": "clarification_required",
+      "latency_ms": 0.001,
+      "predicted_outcome": "grounded_answer",
+      "query": "Is it better?",
+      "question_id": "qa_000054",
+      "success": true
+    },
+    {
+      "confidence": 0.85,
+      "error_message": null,
+      "expected_outcome": "clarification_required",
+      "latency_ms": 0.001,
+      "predicted_outcome": "grounded_answer",
+      "query": "Who was the speaker talking about?",
+      "question_id": "qa_000055",
+      "success": true
+    },
+    {
+      "confidence": 0.85,
+      "error_message": null,
+      "expected_outcome": "clarification_required",
+      "latency_ms": 0.001,
+      "predicted_outcome": "grounded_answer",
+      "query": "What happened after that part?",
+      "question_id": "qa_000056",
+      "success": true
+    },
+    {
+      "confidence": 0.85,
+      "error_message": null,
+      "expected_outcome": "clarification_required",
+      "latency_ms": 0.0,
+      "predicted_outcome": "grounded_answer",
+      "query": "Can you explain the important difference?",
+      "question_id": "qa_000057",
+      "success": true
+    },
+    {
+      "confidence": 0.85,
+      "error_message": null,
+      "expected_outcome": "clarification_required",
+      "latency_ms": 0.0,
+      "predicted_outcome": "grounded_answer",
+      "query": "Where is the example?",
+      "question_id": "qa_000058",
+      "success": true
+    },
+    {
+      "confidence": 0.85,
+      "error_message": null,
+      "expected_outcome": "clarification_required",
+      "latency_ms": 0.001,
+      "predicted_outcome": "grounded_answer",
+      "query": "Does the model change?",
+      "question_id": "qa_000059",
+      "success": true
+    },
+    {
+      "confidence": 0.85,
+      "error_message": null,
+      "expected_outcome": "clarification_required",
+      "latency_ms": 0.001,
+      "predicted_outcome": "grounded_answer",
+      "query": "Can you give me the timestamp for the key point?",
+      "question_id": "qa_000060",
+      "success": true
+    }
+  ],
+  "latency_summary": {
+    "average_ms": 0.001,
+    "count": 60,
+    "max_ms": 0.003,
+    "min_ms": 0.0,
+    "p50_ms": 0.001,
+    "p90_ms": 0.001,
+    "p95_ms": 0.002
+  },
+  "low_confidence_questions": [],
+  "metadata": {
+    "execution_failures": 0,
+    "run_timestamp": "2026-07-23T17:23:50.599594+00:00",
+    "runner_version": "evaluation-runner-v1",
+    "successful_questions": 60,
+    "total_questions": 60,
+    "video_id": "mcp_vs_api"
+  },
+  "metrics": {
+    "average_confidence": 0.85,
+    "average_latency_ms": 0.0008,
+    "citation_presence_rate": 1.0,
+    "citation_validity_rate": 0.35,
+    "fallback_rate": 0.0,
+    "negative_question_abstention_rate": 0.0,
+    "outcome_accuracy": 0.6667,
+    "required_term_coverage": 0.2137,
+    "timestamp_hit_rate": 0.025,
+    "unsupported_claim_rate": 0.975
+  },
+  "per_question_summary": [
+    {
+      "confidence": 0.85,
+      "error_message": null,
+      "expected_outcome": "grounded_answer",
+      "latency_ms": 0.003,
+      "predicted_outcome": "grounded_answer",
+      "query": "What does RAG stand for?",
+      "question_id": "qa_000001",
+      "success": true
+    },
+    {
+      "confidence": 0.85,
+      "error_message": null,
+      "expected_outcome": "grounded_answer",
+      "latency_ms": 0.001,
+      "predicted_outcome": "grounded_answer",
+      "query": "How does the lecturer define RAG?",
+      "question_id": "qa_000002",
+      "success": true
+    },
+    {
+      "confidence": 0.85,
+      "error_message": null,
+      "expected_outcome": "grounded_answer",
+      "latency_ms": 0.001,
+      "predicted_outcome": "grounded_answer",
+      "query": "What is the retriever in this RAG explanation?",
+      "question_id": "qa_000003",
+      "success": true
+    },
+    {
+      "confidence": 0.85,
+      "error_message": null,
+      "expected_outcome": "grounded_answer",
+      "latency_ms": 0.001,
+      "predicted_outcome": "grounded_answer",
+      "query": "What does the R in RAG mean?",
+      "question_id": "qa_000004",
+      "success": true
+    },
+    {
+      "confidence": 0.85,
+      "error_message": null,
+      "expected_outcome": "grounded_answer",
+      "latency_ms": 0.001,
+      "predicted_outcome": "grounded_answer",
+      "query": "What does augmentation mean in the RAG workflow?",
+      "question_id": "qa_000005",
+      "success": true
+    },
+    {
+      "confidence": 0.85,
+      "error_message": null,
+      "expected_outcome": "grounded_answer",
+      "latency_ms": 0.001,
+      "predicted_outcome": "grounded_answer",
+      "query": "What does the A in RAG stand for?",
+      "question_id": "qa_000006",
+      "success": true
+    },
+    {
+      "confidence": 0.85,
+      "error_message": null,
+      "expected_outcome": "grounded_answer",
+      "latency_ms": 0.001,
+      "predicted_outcome": "grounded_answer",
+      "query": "What is generation in the RAG pipeline?",
+      "question_id": "qa_000007",
+      "success": true
+    },
+    {
+      "confidence": 0.85,
+      "error_message": null,
+      "expected_outcome": "grounded_answer",
+      "latency_ms": 0.002,
+      "predicted_outcome": "grounded_answer",
+      "query": "What is an orchestrator in the diagram?",
+      "question_id": "qa_000008",
+      "success": true
+    },
+    {
+      "confidence": 0.85,
+      "error_message": null,
+      "expected_outcome": "grounded_answer",
+      "latency_ms": 0.001,
+      "predicted_outcome": "grounded_answer",
+      "query": "What is fine tuning according to the lecture?",
+      "question_id": "qa_000009",
+      "success": true
+    },
+    {
+      "confidence": 0.85,
+      "error_message": null,
+      "expected_outcome": "grounded_answer",
+      "latency_ms": 0.001,
+      "predicted_outcome": "grounded_answer",
+      "query": "What is a vector database used for in the RAG description?",
+      "question_id": "qa_000010",
+      "success": true
+    },
+    {
+      "confidence": 0.85,
+      "error_message": null,
+      "expected_outcome": "grounded_answer",
+      "latency_ms": 0.0,
+      "predicted_outcome": "grounded_answer",
+      "query": "Why does RAG check a database before calling the LLM?",
+      "question_id": "qa_000011",
+      "success": true
+    },
+    {
+      "confidence": 0.85,
+      "error_message": null,
+      "expected_outcome": "grounded_answer",
+      "latency_ms": 0.001,
+      "predicted_outcome": "grounded_answer",
+      "query": "How does a user prompt move through the first RAG diagram?",
+      "question_id": "qa_000012",
+      "success": true
+    },
+    {
+      "confidence": 0.85,
+      "error_message": null,
+      "expected_outcome": "grounded_answer",
+      "latency_ms": 0.001,
+      "predicted_outcome": "grounded_answer",
+      "query": "Why can RAG improve factual accuracy?",
+      "question_id": "qa_000013",
+      "success": true
+    },
+    {
+      "confidence": 0.85,
+      "error_message": null,
+      "expected_outcome": "grounded_answer",
+      "latency_ms": 0.001,
+      "predicted_outcome": "grounded_answer",
+      "query": "How can RAG use up-to-date information without retraining?",
+      "question_id": "qa_000014",
+      "success": true
+    },
+    {
+      "confidence": 0.85,
+      "error_message": null,
+      "expected_outcome": "grounded_answer",
+      "latency_ms": 0.0,
+      "predicted_outcome": "grounded_answer",
+      "query": "Why is RAG described as cost efficient?",
+      "question_id": "qa_000015",
+      "success": true
+    },
+    {
+      "confidence": 0.85,
+      "error_message": null,
+      "expected_outcome": "grounded_answer",
+      "latency_ms": 0.001,
+      "predicted_outcome": "grounded_answer",
+      "query": "Why is RAG customizable for different industries?",
+      "question_id": "qa_000016",
+      "success": true
+    },
+    {
+      "confidence": 0.85,
+      "error_message": null,
+      "expected_outcome": "grounded_answer",
+      "latency_ms": 0.0,
+      "predicted_outcome": "grounded_answer",
+      "query": "How does RAG make generated answers more explainable?",
+      "question_id": "qa_000017",
+      "success": true
+    },
+    {
+      "confidence": 0.85,
+      "error_message": null,
+      "expected_outcome": "grounded_answer",
+      "latency_ms": 0.001,
+      "predicted_outcome": "grounded_answer",
+      "query": "How does RAG differ from fine tuning at the model level?",
+      "question_id": "qa_000018",
+      "success": true
+    },
+    {
+      "confidence": 0.85,
+      "error_message": null,
+      "expected_outcome": "grounded_answer",
+      "latency_ms": 0.001,
+      "predicted_outcome": "grounded_answer",
+      "query": "Why does fine tuning require more compute expertise than RAG?",
+      "question_id": "qa_000019",
+      "success": true
+    },
+    {
+      "confidence": 0.85,
+      "error_message": null,
+      "expected_outcome": "grounded_answer",
+      "latency_ms": 0.001,
+      "predicted_outcome": "grounded_answer",
+      "query": "What problem can occur when RAG retrieval is poor?",
+      "question_id": "qa_000020",
+      "success": true
+    },
+    {
+      "confidence": 0.85,
+      "error_message": null,
+      "expected_outcome": "grounded_answer",
+      "latency_ms": 0.001,
+      "predicted_outcome": "grounded_answer",
+      "query": "What appears before the retriever in the first workflow visual?",
+      "question_id": "qa_000021",
+      "success": true
+    },
+    {
+      "confidence": 0.85,
+      "error_message": null,
+      "expected_outcome": "grounded_answer",
+      "latency_ms": 0.0,
+      "predicted_outcome": "grounded_answer",
+      "query": "In the first RAG diagram, what does the retriever search?",
+      "question_id": "qa_000022",
+      "success": true
+    },
+    {
+      "confidence": 0.85,
+      "error_message": null,
+      "expected_outcome": "grounded_answer",
+      "latency_ms": 0.0,
+      "predicted_outcome": "grounded_answer",
+      "query": "What is visually added to the prompt during the A step?",
+      "question_id": "qa_000023",
+      "success": true
+    },
+    {
+      "confidence": 0.85,
+      "error_message": null,
+      "expected_outcome": "grounded_answer",
+      "latency_ms": 0.0,
+      "predicted_outcome": "grounded_answer",
+      "query": "Which component receives the augmented prompt in the diagram?",
+      "question_id": "qa_000024",
+      "success": true
+    },
+    {
+      "confidence": 0.85,
+      "error_message": null,
+      "expected_outcome": "grounded_answer",
+      "latency_ms": 0.001,
+      "predicted_outcome": "grounded_answer",
+      "query": "What repeated diagram does the lecturer show at the high-level overview?",
+      "question_id": "qa_000025",
+      "success": true
+    },
+    {
+      "confidence": 0.85,
+      "error_message": null,
+      "expected_outcome": "grounded_answer",
+      "latency_ms": 0.0,
+      "predicted_outcome": "grounded_answer",
+      "query": "In the overview workflow, what does the orchestrator send to the retriever?",
+      "question_id": "qa_000026",
+      "success": true
+    },
+    {
+      "confidence": 0.85,
+      "error_message": null,
+      "expected_outcome": "grounded_answer",
+      "latency_ms": 0.0,
+      "predicted_outcome": "grounded_answer",
+      "query": "Where does the retriever send fetched information in the overview diagram?",
+      "question_id": "qa_000027",
+      "success": true
+    },
+    {
+      "confidence": 0.85,
+      "error_message": null,
+      "expected_outcome": "grounded_answer",
+      "latency_ms": 0.001,
+      "predicted_outcome": "grounded_answer",
+      "query": "What is shown as the final destination of generated text in the workflow?",
+      "question_id": "qa_000028",
+      "success": true
+    },
+    {
+      "confidence": 0.85,
+      "error_message": null,
+      "expected_outcome": "grounded_answer",
+      "latency_ms": 0.001,
+      "predicted_outcome": "grounded_answer",
+      "query": "What visual metaphor does the lecturer use for the model during the comparison?",
+      "question_id": "qa_000029",
+      "success": true
+    },
+    {
+      "confidence": 0.85,
+      "error_message": null,
+      "expected_outcome": "grounded_answer",
+      "latency_ms": 0.0,
+      "predicted_outcome": "grounded_answer",
+      "query": "What visual contrast is made between fine tuning and RAG knowledge?",
+      "question_id": "qa_000030",
+      "success": true
+    },
+    {
+      "confidence": 0.85,
+      "error_message": null,
+      "expected_outcome": "grounded_answer",
+      "latency_ms": 0.001,
+      "predicted_outcome": "grounded_answer",
+      "query": "At what point does the lecture first define RAG?",
+      "question_id": "qa_000031",
+      "success": true
+    },
+    {
+      "confidence": 0.85,
+      "error_message": null,
+      "expected_outcome": "grounded_answer",
+      "latency_ms": 0.001,
+      "predicted_outcome": "grounded_answer",
+      "query": "When does the speaker introduce the medical-company knowledge-base example?",
+      "question_id": "qa_000032",
+      "success": true
+    },
+    {
+      "confidence": 0.85,
+      "error_message": null,
+      "expected_outcome": "grounded_answer",
+      "latency_ms": 0.001,
+      "predicted_outcome": "grounded_answer",
+      "query": "When is retrieval identified as the first RAG step?",
+      "question_id": "qa_000033",
+      "success": true
+    },
+    {
+      "confidence": 0.85,
+      "error_message": null,
+      "expected_outcome": "grounded_answer",
+      "latency_ms": 0.001,
+      "predicted_outcome": "grounded_answer",
+      "query": "At what timestamp does the speaker explain that A means augmentation?",
+      "question_id": "qa_000034",
+      "success": true
+    },
+    {
+      "confidence": 0.85,
+      "error_message": null,
+      "expected_outcome": "grounded_answer",
+      "latency_ms": 0.001,
+      "predicted_outcome": "grounded_answer",
+      "query": "When does the lecture reach the generation step?",
+      "question_id": "qa_000035",
+      "success": true
+    },
+    {
+      "confidence": 0.85,
+      "error_message": null,
+      "expected_outcome": "grounded_answer",
+      "latency_ms": 0.001,
+      "predicted_outcome": "grounded_answer",
+      "query": "Where does the high-level RAG workflow walkthrough begin?",
+      "question_id": "qa_000036",
+      "success": true
+    },
+    {
+      "confidence": 0.85,
+      "error_message": null,
+      "expected_outcome": "grounded_answer",
+      "latency_ms": 0.001,
+      "predicted_outcome": "grounded_answer",
+      "query": "At what point are RAG benefits introduced?",
+      "question_id": "qa_000037",
+      "success": true
+    },
+    {
+      "confidence": 0.85,
+      "error_message": null,
+      "expected_outcome": "grounded_answer",
+      "latency_ms": 0.003,
+      "predicted_outcome": "grounded_answer",
+      "query": "When does the speaker discuss current medical records and 10-K reports?",
+      "question_id": "qa_000038",
+      "success": true
+    },
+    {
+      "confidence": 0.85,
+      "error_message": null,
+      "expected_outcome": "grounded_answer",
+      "latency_ms": 0.001,
+      "predicted_outcome": "grounded_answer",
+      "query": "At what timestamp does the fine-tuning comparison begin?",
+      "question_id": "qa_000039",
+      "success": true
+    },
+    {
+      "confidence": 0.85,
+      "error_message": null,
+      "expected_outcome": "grounded_answer",
+      "latency_ms": 0.0,
+      "predicted_outcome": "grounded_answer",
+      "query": "When does the lecturer state the main RAG retrieval drawback?",
+      "question_id": "qa_000040",
+      "success": true
+    },
+    {
+      "confidence": 0.85,
+      "error_message": null,
+      "expected_outcome": "unrelated_to_video",
+      "latency_ms": 0.0,
+      "predicted_outcome": "grounded_answer",
+      "query": "What was the weather during the lecture recording?",
+      "question_id": "qa_000041",
+      "success": true
+    },
+    {
+      "confidence": 0.85,
+      "error_message": null,
+      "expected_outcome": "unrelated_to_video",
+      "latency_ms": 0.001,
+      "predicted_outcome": "grounded_answer",
+      "query": "Who won the most recent FIFA World Cup?",
+      "question_id": "qa_000042",
+      "success": true
+    },
+    {
+      "confidence": 0.85,
+      "error_message": null,
+      "expected_outcome": "unrelated_to_video",
+      "latency_ms": 0.0,
+      "predicted_outcome": "grounded_answer",
+      "query": "What is the capital city of Japan?",
+      "question_id": "qa_000043",
+      "success": true
+    },
+    {
+      "confidence": 0.85,
+      "error_message": null,
+      "expected_outcome": "unrelated_to_video",
+      "latency_ms": 0.0,
+      "predicted_outcome": "grounded_answer",
+      "query": "What is the current price of Bitcoin?",
+      "question_id": "qa_000044",
+      "success": true
+    },
+    {
+      "confidence": 0.85,
+      "error_message": null,
+      "expected_outcome": "unrelated_to_video",
+      "latency_ms": 0.0,
+      "predicted_outcome": "grounded_answer",
+      "query": "Can you recommend a restaurant in Mumbai?",
+      "question_id": "qa_000045",
+      "success": true
+    },
+    {
+      "confidence": 0.85,
+      "error_message": null,
+      "expected_outcome": "unrelated_to_video",
+      "latency_ms": 0.001,
+      "predicted_outcome": "grounded_answer",
+      "query": "What are today's stock-market winners?",
+      "question_id": "qa_000046",
+      "success": true
+    },
+    {
+      "confidence": 0.85,
+      "error_message": null,
+      "expected_outcome": "unrelated_to_video",
+      "latency_ms": 0.001,
+      "predicted_outcome": "grounded_answer",
+      "query": "Write a birthday poem for my friend.",
+      "question_id": "qa_000047",
+      "success": true
+    },
+    {
+      "confidence": 0.85,
+      "error_message": null,
+      "expected_outcome": "unrelated_to_video",
+      "latency_ms": 0.001,
+      "predicted_outcome": "grounded_answer",
+      "query": "How do I change a flat tire?",
+      "question_id": "qa_000048",
+      "success": true
+    },
+    {
+      "confidence": 0.85,
+      "error_message": null,
+      "expected_outcome": "unrelated_to_video",
+      "latency_ms": 0.0,
+      "predicted_outcome": "grounded_answer",
+      "query": "What is the best recipe for pancakes?",
+      "question_id": "qa_000049",
+      "success": true
+    },
+    {
+      "confidence": 0.85,
+      "error_message": null,
+      "expected_outcome": "unrelated_to_video",
+      "latency_ms": 0.001,
+      "predicted_outcome": "grounded_answer",
+      "query": "What is the population of Brazil?",
+      "question_id": "qa_000050",
+      "success": true
+    },
+    {
+      "confidence": 0.85,
+      "error_message": null,
+      "expected_outcome": "clarification_required",
+      "latency_ms": 0.002,
+      "predicted_outcome": "grounded_answer",
+      "query": "What does that mean?",
+      "question_id": "qa_000051",
+      "success": true
+    },
+    {
+      "confidence": 0.85,
+      "error_message": null,
+      "expected_outcome": "clarification_required",
+      "latency_ms": 0.001,
+      "predicted_outcome": "grounded_answer",
+      "query": "When did he explain it?",
+      "question_id": "qa_000052",
+      "success": true
+    },
+    {
+      "confidence": 0.85,
+      "error_message": null,
+      "expected_outcome": "clarification_required",
+      "latency_ms": 0.001,
+      "predicted_outcome": "grounded_answer",
+      "query": "What was on the slide?",
+      "question_id": "qa_000053",
+      "success": true
+    },
+    {
+      "confidence": 0.85,
+      "error_message": null,
+      "expected_outcome": "clarification_required",
+      "latency_ms": 0.001,
+      "predicted_outcome": "grounded_answer",
+      "query": "Is it better?",
+      "question_id": "qa_000054",
+      "success": true
+    },
+    {
+      "confidence": 0.85,
+      "error_message": null,
+      "expected_outcome": "clarification_required",
+      "latency_ms": 0.001,
+      "predicted_outcome": "grounded_answer",
+      "query": "Who was the speaker talking about?",
+      "question_id": "qa_000055",
+      "success": true
+    },
+    {
+      "confidence": 0.85,
+      "error_message": null,
+      "expected_outcome": "clarification_required",
+      "latency_ms": 0.001,
+      "predicted_outcome": "grounded_answer",
+      "query": "What happened after that part?",
+      "question_id": "qa_000056",
+      "success": true
+    },
+    {
+      "confidence": 0.85,
+      "error_message": null,
+      "expected_outcome": "clarification_required",
+      "latency_ms": 0.0,
+      "predicted_outcome": "grounded_answer",
+      "query": "Can you explain the important difference?",
+      "question_id": "qa_000057",
+      "success": true
+    },
+    {
+      "confidence": 0.85,
+      "error_message": null,
+      "expected_outcome": "clarification_required",
+      "latency_ms": 0.0,
+      "predicted_outcome": "grounded_answer",
+      "query": "Where is the example?",
+      "question_id": "qa_000058",
+      "success": true
+    },
+    {
+      "confidence": 0.85,
+      "error_message": null,
+      "expected_outcome": "clarification_required",
+      "latency_ms": 0.001,
+      "predicted_outcome": "grounded_answer",
+      "query": "Does the model change?",
+      "question_id": "qa_000059",
+      "success": true
+    },
+    {
+      "confidence": 0.85,
+      "error_message": null,
+      "expected_outcome": "clarification_required",
+      "latency_ms": 0.001,
+      "predicted_outcome": "grounded_answer",
+      "query": "Can you give me the timestamp for the key point?",
+      "question_id": "qa_000060",
+      "success": true
+    }
+  ],
+  "top_error_categories": [
+    {
+      "category": "Missing Required Terms",
+      "count": 39
+    },
+    {
+      "category": "Unsupported Claim",
+      "count": 39
+    },
+    {
+      "category": "Outcome Mismatch (expected: clarification_required, got: grounded_answer)",
+      "count": 10
+    },
+    {
+      "category": "Outcome Mismatch (expected: unrelated_to_video, got: grounded_answer)",
+      "count": 10
+    }
+  ]
+}

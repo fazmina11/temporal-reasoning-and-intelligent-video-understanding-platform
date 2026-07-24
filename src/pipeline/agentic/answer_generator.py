@@ -12,7 +12,10 @@ except ImportError:
     genai_types = None
 
 
+from src.pipeline.knowledge_reconstruction import is_explanatory_query
+
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3-flash-preview")
+
 
 
 class GroundedAnswerGenerator:
@@ -90,10 +93,25 @@ class GroundedAnswerGenerator:
             support = evidence[1]
             support_text = _first_supported_sentence(support.get("text") or support.get("visual_summary") or "")
             answer += f"\n\nA nearby supporting moment adds: {support_text[:350]} [{support['citation_id']}]."
+
+        # Integrate Knowledge Reconstruction for explanatory queries
+        question = packet.get("question", "")
+        if question and is_explanatory_query(question):
+            try:
+                from src.pipeline.knowledge_reconstruction import reconstruct_knowledge
+                recon = reconstruct_knowledge(question, evidence)
+                if recon.learning_path.ordered_concepts and len(recon.learning_path.ordered_concepts) > 1:
+                    chain = " -> ".join(recon.learning_path.ordered_concepts)
+                    path_prefix = f"Prerequisite Learning Path: {chain}\n\n"
+                    answer = path_prefix + answer
+            except Exception:
+                pass
+
         notes = packet.get("missing_evidence_notes") or []
         if notes:
             answer += "\n\nLimitations: " + "; ".join(notes)
         return {"answer": _strip_paths(answer), "fallback_used": fallback_used, "model": model}
+
 
 
 def format_ms(ms: int) -> str:

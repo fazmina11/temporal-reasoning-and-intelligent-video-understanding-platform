@@ -1,0 +1,221 @@
+{
+  "improved_metrics": [],
+  "latency_delta": {
+    "average_ms": {
+      "baseline": 0.001,
+      "candidate": 0.001,
+      "delta": 0.0,
+      "status": "unchanged"
+    },
+    "max_ms": {
+      "baseline": 0.003,
+      "candidate": 0.006,
+      "delta": 0.003,
+      "status": "regressed"
+    },
+    "min_ms": {
+      "baseline": 0.0,
+      "candidate": 0.001,
+      "delta": 0.001,
+      "status": "regressed"
+    },
+    "p50_ms": {
+      "baseline": 0.001,
+      "candidate": 0.001,
+      "delta": 0.0,
+      "status": "unchanged"
+    },
+    "p90_ms": {
+      "baseline": 0.001,
+      "candidate": 0.002,
+      "delta": 0.001,
+      "status": "regressed"
+    },
+    "p95_ms": {
+      "baseline": 0.002,
+      "candidate": 0.003,
+      "delta": 0.001,
+      "status": "regressed"
+    }
+  },
+  "metadata": {
+    "baseline_runner_version": "evaluation-runner-v1",
+    "baseline_timestamp": "2026-07-23T17:23:50.599594+00:00",
+    "baseline_total_questions": 60,
+    "baseline_video_id": "mcp_vs_api",
+    "candidate_runner_version": "evaluation-runner-v1",
+    "candidate_timestamp": "2026-07-23T17:25:16.703270+00:00",
+    "candidate_total_questions": 60,
+    "candidate_video_id": "mcp_vs_api",
+    "comparison_timestamp": "2026-07-23T17:25:16.728939+00:00",
+    "video_id": "mcp_vs_api"
+  },
+  "metric_differences": {
+    "average_confidence": {
+      "baseline": 0.85,
+      "candidate": 0.85,
+      "delta": 0.0,
+      "direction": "higher_is_better",
+      "metric": "average_confidence",
+      "status": "unchanged"
+    },
+    "average_latency_ms": {
+      "baseline": 0.0008,
+      "candidate": 0.0013,
+      "delta": 0.0005,
+      "direction": "lower_is_better",
+      "metric": "average_latency_ms",
+      "status": "regressed"
+    },
+    "citation_presence_rate": {
+      "baseline": 1.0,
+      "candidate": 1.0,
+      "delta": 0.0,
+      "direction": "higher_is_better",
+      "metric": "citation_presence_rate",
+      "status": "unchanged"
+    },
+    "citation_validity_rate": {
+      "baseline": 0.35,
+      "candidate": 0.35,
+      "delta": 0.0,
+      "direction": "higher_is_better",
+      "metric": "citation_validity_rate",
+      "status": "unchanged"
+    },
+    "fallback_rate": {
+      "baseline": 0.0,
+      "candidate": 0.0,
+      "delta": 0.0,
+      "direction": "lower_is_better",
+      "metric": "fallback_rate",
+      "status": "unchanged"
+    },
+    "negative_question_abstention_rate": {
+      "baseline": 0.0,
+      "candidate": 0.0,
+      "delta": 0.0,
+      "direction": "higher_is_better",
+      "metric": "negative_question_abstention_rate",
+      "status": "unchanged"
+    },
+    "outcome_accuracy": {
+      "baseline": 0.6667,
+      "candidate": 0.6667,
+      "delta": 0.0,
+      "direction": "higher_is_better",
+      "metric": "outcome_accuracy",
+      "status": "unchanged"
+    },
+    "required_term_coverage": {
+      "baseline": 0.2137,
+      "candidate": 0.2137,
+      "delta": 0.0,
+      "direction": "higher_is_better",
+      "metric": "required_term_coverage",
+      "status": "unchanged"
+    },
+    "timestamp_hit_rate": {
+      "baseline": 0.025,
+      "candidate": 0.025,
+      "delta": 0.0,
+      "direction": "higher_is_better",
+      "metric": "timestamp_hit_rate",
+      "status": "unchanged"
+    },
+    "unsupported_claim_rate": {
+      "baseline": 0.975,
+      "candidate": 0.975,
+      "delta": 0.0,
+      "direction": "lower_is_better",
+      "metric": "unsupported_claim_rate",
+      "status": "unchanged"
+    }
+  },
+  "new_failures": [],
+  "regressed_metrics": [
+    {
+      "baseline": 0.0008,
+      "candidate": 0.0013,
+      "delta": 0.0005,
+      "direction": "lower_is_better",
+      "metric": "average_latency_ms",
+      "status": "regressed"
+    }
+  ],
+  "resolved_failures": [],
+  "unchanged_metrics": [
+    {
+      "baseline": 0.85,
+      "candidate": 0.85,
+      "delta": 0.0,
+      "direction": "higher_is_better",
+      "metric": "average_confidence",
+      "status": "unchanged"
+    },
+    {
+      "baseline": 1.0,
+      "candidate": 1.0,
+      "delta": 0.0,
+      "direction": "higher_is_better",
+      "metric": "citation_presence_rate",
+      "status": "unchanged"
+    },
+    {
+      "baseline": 0.35,
+      "candidate": 0.35,
+      "delta": 0.0,
+      "direction": "higher_is_better",
+      "metric": "citation_validity_rate",
+      "status": "unchanged"
+    },
+    {
+      "baseline": 0.0,
+      "candidate": 0.0,
+      "delta": 0.0,
+      "direction": "lower_is_better",
+      "metric": "fallback_rate",
+      "status": "unchanged"
+    },
+    {
+      "baseline": 0.0,
+      "candidate": 0.0,
+      "delta": 0.0,
+      "direction": "higher_is_better",
+      "metric": "negative_question_abstention_rate",
+      "status": "unchanged"
+    },
+    {
+      "baseline": 0.6667,
+      "candidate": 0.6667,
+      "delta": 0.0,
+      "direction": "higher_is_better",
+      "metric": "outcome_accuracy",
+      "status": "unchanged"
+    },
+    {
+      "baseline": 0.2137,
+      "candidate": 0.2137,
+      "delta": 0.0,
+      "direction": "higher_is_better",
+      "metric": "required_term_coverage",
+      "status": "unchanged"
+    },
+    {
+      "baseline": 0.025,
+      "candidate": 0.025,
+      "delta": 0.0,
+      "direction": "higher_is_better",
+      "metric": "timestamp_hit_rate",
+      "status": "unchanged"
+    },
+    {
+      "baseline": 0.975,
+      "candidate": 0.975,
+      "delta": 0.0,
+      "direction": "lower_is_better",
+      "metric": "unsupported_claim_rate",
+      "status": "unchanged"
+    }
+  ]
+}

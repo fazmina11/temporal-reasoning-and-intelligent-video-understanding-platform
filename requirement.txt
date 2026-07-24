@@ -13,3 +13,5 @@ sentence-transformers
 pytesseract
 scipy
 scikit-learn
+Pillow
+imagehash

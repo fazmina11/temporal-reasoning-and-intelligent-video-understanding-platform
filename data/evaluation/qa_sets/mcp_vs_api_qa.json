@@ -1,0 +1,187 @@
+{
+  "video_id": "mcp_vs_api",
+  "description": "Evaluation questions for the RAG lecture indexed under the mcp_vs_api fixture video ID.",
+  "created_at": "2026-07-23T20:30:00+05:30",
+  "items": [
+    {
+      "question_id": "qa_000001", "video_id": "mcp_vs_api", "query": "What does RAG stand for?", "expected_outcome": "grounded_answer", "expected_start_ms_min": 0, "expected_start_ms_max": 12000, "required_terms": ["retrieval augmented generation", "RAG"], "forbidden_terms": ["fine tuning"], "expected_source_types": ["semantic_chunk", "atom", "speaker"], "notes": "Opening introduces the expanded name of RAG.", "query_type": "definition"
+    },
+    {
+      "question_id": "qa_000002", "video_id": "mcp_vs_api", "query": "How does the lecturer define RAG?", "expected_outcome": "grounded_answer", "expected_start_ms_min": 20000, "expected_start_ms_max": 38000, "required_terms": ["technique", "retrieval", "generative AI models"], "forbidden_terms": ["retrain"], "expected_source_types": ["semantic_chunk", "atom"], "notes": "The direct definition appears immediately after the introduction.", "query_type": "definition"
+    },
+    {
+      "question_id": "qa_000003", "video_id": "mcp_vs_api", "query": "What is the retriever in this RAG explanation?", "expected_outcome": "grounded_answer", "expected_start_ms_min": 87000, "expected_start_ms_max": 113000, "required_terms": ["search", "database", "information"], "forbidden_terms": ["update model weights"], "expected_source_types": ["semantic_chunk", "atom", "event"], "notes": "The retriever is defined through its database-search role.", "query_type": "definition"
+    },
+    {
+      "question_id": "qa_000004", "video_id": "mcp_vs_api", "query": "What does the R in RAG mean?", "expected_outcome": "grounded_answer", "expected_start_ms_min": 113000, "expected_start_ms_max": 133000, "required_terms": ["retrieval", "external source", "relevant information"], "forbidden_terms": ["generation"], "expected_source_types": ["semantic_chunk", "atom", "ocr"], "notes": "The speaker explicitly labels the R term as retrieval.", "query_type": "definition"
+    },
+    {
+      "question_id": "qa_000005", "video_id": "mcp_vs_api", "query": "What does augmentation mean in the RAG workflow?", "expected_outcome": "grounded_answer", "expected_start_ms_min": 133000, "expected_start_ms_max": 174000, "required_terms": ["prompt", "context", "retrieved information"], "forbidden_terms": ["retraining"], "expected_source_types": ["semantic_chunk", "atom"], "notes": "Augmentation combines the user prompt with retrieved context.", "query_type": "definition"
+    },
+    {
+      "question_id": "qa_000006", "video_id": "mcp_vs_api", "query": "What does the A in RAG stand for?", "expected_outcome": "grounded_answer", "expected_start_ms_min": 157000, "expected_start_ms_max": 174000, "required_terms": ["augmented", "user prompt", "database"], "forbidden_terms": ["gradient"], "expected_source_types": ["semantic_chunk", "atom"], "notes": "The speaker labels A while describing combined context.", "query_type": "definition"
+    },
+    {
+      "question_id": "qa_000007", "video_id": "mcp_vs_api", "query": "What is generation in the RAG pipeline?", "expected_outcome": "grounded_answer", "expected_start_ms_min": 174000, "expected_start_ms_max": 191000, "required_terms": ["output", "augmented prompt", "context"], "forbidden_terms": ["database indexing"], "expected_source_types": ["semantic_chunk", "atom"], "notes": "Generation is described as producing output with augmented context.", "query_type": "definition"
+    },
+    {
+      "question_id": "qa_000008", "video_id": "mcp_vs_api", "query": "What is an orchestrator in the diagram?", "expected_outcome": "grounded_answer", "expected_start_ms_min": 203000, "expected_start_ms_max": 221000, "required_terms": ["prompt", "query", "orchestrator"], "forbidden_terms": ["GPU training"], "expected_source_types": ["semantic_chunk", "atom", "frame"], "notes": "The diagram walkthrough introduces the orchestrator after the user query.", "query_type": "definition"
+    },
+    {
+      "question_id": "qa_000009", "video_id": "mcp_vs_api", "query": "What is fine tuning according to the lecture?", "expected_outcome": "grounded_answer", "expected_start_ms_min": 403000, "expected_start_ms_max": 428000, "required_terms": ["train", "base model", "specific data sets"], "forbidden_terms": ["external retrieval"], "expected_source_types": ["semantic_chunk", "atom", "speaker"], "notes": "Fine tuning is defined at the beginning of the comparison section.", "query_type": "definition"
+    },
+    {
+      "question_id": "qa_000010", "video_id": "mcp_vs_api", "query": "What is a vector database used for in the RAG description?", "expected_outcome": "grounded_answer", "expected_start_ms_min": 439000, "expected_start_ms_max": 463000, "required_terms": ["document", "indexed", "vector database"], "forbidden_terms": ["labeled training data"], "expected_source_types": ["semantic_chunk", "atom"], "notes": "The RAG side of the comparison explains document indexing.", "query_type": "definition"
+    },
+    {
+      "question_id": "qa_000011", "video_id": "mcp_vs_api", "query": "Why does RAG check a database before calling the LLM?", "expected_outcome": "grounded_answer", "expected_start_ms_min": 118000, "expected_start_ms_max": 145000, "required_terms": ["database", "relevant information", "model"], "forbidden_terms": ["change weights"], "expected_source_types": ["semantic_chunk", "atom", "event"], "notes": "The speaker contrasts a direct model call with looking up external information first.", "query_type": "concept"
+    },
+    {
+      "question_id": "qa_000012", "video_id": "mcp_vs_api", "query": "How does a user prompt move through the first RAG diagram?", "expected_outcome": "grounded_answer", "expected_start_ms_min": 42000, "expected_start_ms_max": 87000, "required_terms": ["prompt", "retriever", "knowledge base"], "forbidden_terms": ["fine tuning weights"], "expected_source_types": ["semantic_chunk", "atom", "frame"], "notes": "The initial diagram walks from the user prompt to the retriever and knowledge base.", "query_type": "concept"
+    },
+    {
+      "question_id": "qa_000013", "video_id": "mcp_vs_api", "query": "Why can RAG improve factual accuracy?", "expected_outcome": "grounded_answer", "expected_start_ms_min": 304000, "expected_start_ms_max": 322000, "required_terms": ["accurate", "factual data", "minimizing errors"], "forbidden_terms": ["gradient descent"], "expected_source_types": ["semantic_chunk", "atom"], "notes": "Benefits section ties retrieval-grounded data to fewer errors.", "query_type": "concept"
+    },
+    {
+      "question_id": "qa_000014", "video_id": "mcp_vs_api", "query": "How can RAG use up-to-date information without retraining?", "expected_outcome": "grounded_answer", "expected_start_ms_min": 322000, "expected_start_ms_max": 350000, "required_terms": ["updated information", "database", "without retraining"], "forbidden_terms": ["update weights"], "expected_source_types": ["semantic_chunk", "atom"], "notes": "The lecturer gives current medical records and 10-K reports as examples.", "query_type": "concept"
+    },
+    {
+      "question_id": "qa_000015", "video_id": "mcp_vs_api", "query": "Why is RAG described as cost efficient?", "expected_outcome": "grounded_answer", "expected_start_ms_min": 349000, "expected_start_ms_max": 369000, "required_terms": ["update the database", "retrain", "cost"], "forbidden_terms": ["train the base LLM"], "expected_source_types": ["semantic_chunk", "atom"], "notes": "Cost efficiency is connected to avoiding LLM retraining.", "query_type": "concept"
+    },
+    {
+      "question_id": "qa_000016", "video_id": "mcp_vs_api", "query": "Why is RAG customizable for different industries?", "expected_outcome": "grounded_answer", "expected_start_ms_min": 369000, "expected_start_ms_max": 384000, "required_terms": ["customizable", "industries", "custom data sets"], "forbidden_terms": ["fixed knowledge set"], "expected_source_types": ["semantic_chunk", "atom"], "notes": "The benefits list says RAG can be tailored with custom datasets.", "query_type": "concept"
+    },
+    {
+      "question_id": "qa_000017", "video_id": "mcp_vs_api", "query": "How does RAG make generated answers more explainable?", "expected_outcome": "grounded_answer", "expected_start_ms_min": 375000, "expected_start_ms_max": 398000, "required_terms": ["explainable", "data sources", "trust"], "forbidden_terms": ["hidden weights"], "expected_source_types": ["semantic_chunk", "atom", "event"], "notes": "The speaker links surfaced data sources to trust and explanation.", "query_type": "concept"
+    },
+    {
+      "question_id": "qa_000018", "video_id": "mcp_vs_api", "query": "How does RAG differ from fine tuning at the model level?", "expected_outcome": "grounded_answer", "expected_start_ms_min": 270000, "expected_start_ms_max": 303000, "required_terms": ["base model", "same", "database"], "forbidden_terms": ["update all weights"], "expected_source_types": ["semantic_chunk", "atom"], "notes": "The early comparison says RAG leaves the base model unchanged.", "query_type": "concept"
+    },
+    {
+      "question_id": "qa_000019", "video_id": "mcp_vs_api", "query": "Why does fine tuning require more compute expertise than RAG?", "expected_outcome": "grounded_answer", "expected_start_ms_min": 470000, "expected_start_ms_max": 487000, "required_terms": ["GPUs", "gradient descent", "weights"], "forbidden_terms": ["update database"], "expected_source_types": ["semantic_chunk", "atom"], "notes": "Fine tuning requirements are contrasted with RAG use cases.", "query_type": "concept"
+    },
+    {
+      "question_id": "qa_000020", "video_id": "mcp_vs_api", "query": "What problem can occur when RAG retrieval is poor?", "expected_outcome": "grounded_answer", "expected_start_ms_min": 552000, "expected_start_ms_max": 565000, "required_terms": ["retrieval", "poorly indexed", "irrelevant data"], "forbidden_terms": ["guaranteed accuracy"], "expected_source_types": ["semantic_chunk", "atom"], "notes": "The final drawback warns that weak retrieval or indexing can fail.", "query_type": "concept"
+    },
+    {
+      "question_id": "qa_000021", "video_id": "mcp_vs_api", "query": "What appears before the retriever in the first workflow visual?", "expected_outcome": "grounded_answer", "expected_start_ms_min": 37000, "expected_start_ms_max": 58000, "required_terms": ["user", "prompt", "ChatGPT"], "forbidden_terms": ["vector database"], "expected_source_types": ["frame", "semantic_chunk", "atom"], "notes": "The visual workflow starts with a user entering a prompt.", "query_type": "visual_memory"
+    },
+    {
+      "question_id": "qa_000022", "video_id": "mcp_vs_api", "query": "In the first RAG diagram, what does the retriever search?", "expected_outcome": "grounded_answer", "expected_start_ms_min": 73000, "expected_start_ms_max": 113000, "required_terms": ["knowledge base", "database", "documents"], "forbidden_terms": ["model weights"], "expected_source_types": ["frame", "semantic_chunk", "atom"], "notes": "The visual explanation presents a knowledge base feeding the retriever.", "query_type": "visual_memory"
+    },
+    {
+      "question_id": "qa_000023", "video_id": "mcp_vs_api", "query": "What is visually added to the prompt during the A step?", "expected_outcome": "grounded_answer", "expected_start_ms_min": 133000, "expected_start_ms_max": 174000, "required_terms": ["context", "retrieved information", "prompt"], "forbidden_terms": ["labeled data"], "expected_source_types": ["frame", "semantic_chunk", "atom"], "notes": "The augmentation visual combines retrieved context with the original prompt.", "query_type": "visual_memory"
+    },
+    {
+      "question_id": "qa_000024", "video_id": "mcp_vs_api", "query": "Which component receives the augmented prompt in the diagram?", "expected_outcome": "grounded_answer", "expected_start_ms_min": 169000, "expected_start_ms_max": 180000, "required_terms": ["LLM", "augmented prompt"], "forbidden_terms": ["retriever"], "expected_source_types": ["frame", "semantic_chunk", "atom"], "notes": "The diagram sends the combined prompt and context to the LLM.", "query_type": "visual_memory"
+    },
+    {
+      "question_id": "qa_000025", "video_id": "mcp_vs_api", "query": "What repeated diagram does the lecturer show at the high-level overview?", "expected_outcome": "grounded_answer", "expected_start_ms_min": 196000, "expected_start_ms_max": 214000, "required_terms": ["same diagram", "steps", "RAG"], "forbidden_terms": ["new fine tuning chart"], "expected_source_types": ["frame", "semantic_chunk", "atom"], "notes": "The lecturer says the overview reuses the exact same RAG diagram.", "query_type": "visual_memory"
+    },
+    {
+      "question_id": "qa_000026", "video_id": "mcp_vs_api", "query": "In the overview workflow, what does the orchestrator send to the retriever?", "expected_outcome": "grounded_answer", "expected_start_ms_min": 206000, "expected_start_ms_max": 226000, "required_terms": ["search query", "retriever", "orchestrator"], "forbidden_terms": ["generated text"], "expected_source_types": ["frame", "semantic_chunk", "atom"], "notes": "The high-level visual labels the orchestrator-to-retriever handoff.", "query_type": "visual_memory"
+    },
+    {
+      "question_id": "qa_000027", "video_id": "mcp_vs_api", "query": "Where does the retriever send fetched information in the overview diagram?", "expected_outcome": "grounded_answer", "expected_start_ms_min": 220000, "expected_start_ms_max": 243000, "required_terms": ["relevant information", "context", "orchestrator"], "forbidden_terms": ["directly to user"], "expected_source_types": ["frame", "semantic_chunk", "atom"], "notes": "The retriever returns information before augmentation occurs.", "query_type": "visual_memory"
+    },
+    {
+      "question_id": "qa_000028", "video_id": "mcp_vs_api", "query": "What is shown as the final destination of generated text in the workflow?", "expected_outcome": "grounded_answer", "expected_start_ms_min": 247000, "expected_start_ms_max": 261000, "required_terms": ["user", "orchestrator", "generated text"], "forbidden_terms": ["knowledge source"], "expected_source_types": ["frame", "semantic_chunk", "atom"], "notes": "The LLM response is displayed to the user via the orchestrator.", "query_type": "visual_memory"
+    },
+    {
+      "question_id": "qa_000029", "video_id": "mcp_vs_api", "query": "What visual metaphor does the lecturer use for the model during the comparison?", "expected_outcome": "grounded_answer", "expected_start_ms_min": 494000, "expected_start_ms_max": 526000, "required_terms": ["brain", "weights", "database"], "forbidden_terms": ["browser tab"], "expected_source_types": ["frame", "semantic_chunk", "atom"], "notes": "The speaker uses a digital-brain metaphor to contrast weights and external knowledge.", "query_type": "visual_memory"
+    },
+    {
+      "question_id": "qa_000030", "video_id": "mcp_vs_api", "query": "What visual contrast is made between fine tuning and RAG knowledge?", "expected_outcome": "grounded_answer", "expected_start_ms_min": 504000, "expected_start_ms_max": 536000, "required_terms": ["embedded", "weights", "external knowledge"], "forbidden_terms": ["identical process"], "expected_source_types": ["frame", "semantic_chunk", "atom"], "notes": "The comparison describes fine-tuned knowledge inside weights and RAG knowledge added from a database.", "query_type": "visual_memory"
+    },
+    {
+      "question_id": "qa_000031", "video_id": "mcp_vs_api", "query": "At what point does the lecture first define RAG?", "expected_outcome": "grounded_answer", "expected_start_ms_min": 20000, "expected_start_ms_max": 38000, "required_terms": ["technique", "retrieval", "generative AI"], "forbidden_terms": ["fine tuning comparison"], "expected_source_types": ["semantic_chunk", "atom", "speaker"], "notes": "Timestamp targets the direct RAG definition.", "query_type": "exact_timestamp"
+    },
+    {
+      "question_id": "qa_000032", "video_id": "mcp_vs_api", "query": "When does the speaker introduce the medical-company knowledge-base example?", "expected_outcome": "grounded_answer", "expected_start_ms_min": 73000, "expected_start_ms_max": 97000, "required_terms": ["medical company", "reports", "database"], "forbidden_terms": ["10K reports"], "expected_source_types": ["semantic_chunk", "atom"], "notes": "The medical-record example starts the knowledge-base explanation.", "query_type": "exact_timestamp"
+    },
+    {
+      "question_id": "qa_000033", "video_id": "mcp_vs_api", "query": "When is retrieval identified as the first RAG step?", "expected_outcome": "grounded_answer", "expected_start_ms_min": 107000, "expected_start_ms_max": 125000, "required_terms": ["first step", "R", "retrieval"], "forbidden_terms": ["generation"], "expected_source_types": ["semantic_chunk", "atom"], "notes": "The R term is explicitly named after the retriever fetches information.", "query_type": "exact_timestamp"
+    },
+    {
+      "question_id": "qa_000034", "video_id": "mcp_vs_api", "query": "At what timestamp does the speaker explain that A means augmentation?", "expected_outcome": "grounded_answer", "expected_start_ms_min": 144000, "expected_start_ms_max": 174000, "required_terms": ["A", "augmentation", "context"], "forbidden_terms": ["generation"], "expected_source_types": ["semantic_chunk", "atom"], "notes": "This window includes the explicit A-term explanation.", "query_type": "exact_timestamp"
+    },
+    {
+      "question_id": "qa_000035", "video_id": "mcp_vs_api", "query": "When does the lecture reach the generation step?", "expected_outcome": "grounded_answer", "expected_start_ms_min": 174000, "expected_start_ms_max": 191000, "required_terms": ["generation", "output", "LLM"], "forbidden_terms": ["retrieval database"], "expected_source_types": ["semantic_chunk", "atom"], "notes": "The G step begins after the augmented prompt is sent to the LLM.", "query_type": "exact_timestamp"
+    },
+    {
+      "question_id": "qa_000036", "video_id": "mcp_vs_api", "query": "Where does the high-level RAG workflow walkthrough begin?", "expected_outcome": "grounded_answer", "expected_start_ms_min": 196000, "expected_start_ms_max": 220000, "required_terms": ["high level", "user", "orchestrator"], "forbidden_terms": ["fine tuning"], "expected_source_types": ["semantic_chunk", "atom", "frame"], "notes": "The speaker restarts with the workflow diagram at a high level.", "query_type": "exact_timestamp"
+    },
+    {
+      "question_id": "qa_000037", "video_id": "mcp_vs_api", "query": "At what point are RAG benefits introduced?", "expected_outcome": "grounded_answer", "expected_start_ms_min": 260000, "expected_start_ms_max": 270000, "required_terms": ["benefits", "RAG"], "forbidden_terms": ["drawbacks"], "expected_source_types": ["semantic_chunk", "atom", "speaker"], "notes": "The benefits section starts just before the fine-tuning contrast.", "query_type": "exact_timestamp"
+    },
+    {
+      "question_id": "qa_000038", "video_id": "mcp_vs_api", "query": "When does the speaker discuss current medical records and 10-K reports?", "expected_outcome": "grounded_answer", "expected_start_ms_min": 322000, "expected_start_ms_max": 344000, "required_terms": ["medical records", "10K reports", "updated"], "forbidden_terms": ["gradient descent"], "expected_source_types": ["semantic_chunk", "atom"], "notes": "Examples of fresh database content are given in this interval.", "query_type": "exact_timestamp"
+    },
+    {
+      "question_id": "qa_000039", "video_id": "mcp_vs_api", "query": "At what timestamp does the fine-tuning comparison begin?", "expected_outcome": "grounded_answer", "expected_start_ms_min": 397000, "expected_start_ms_max": 416000, "required_terms": ["compare", "fine tuning", "RAG"], "forbidden_terms": ["lecture closing"], "expected_source_types": ["semantic_chunk", "atom", "speaker"], "notes": "The comparison begins with the question of how RAG compares to fine tuning.", "query_type": "exact_timestamp"
+    },
+    {
+      "question_id": "qa_000040", "video_id": "mcp_vs_api", "query": "When does the lecturer state the main RAG retrieval drawback?", "expected_outcome": "grounded_answer", "expected_start_ms_min": 552000, "expected_start_ms_max": 565000, "required_terms": ["quality", "retrieval system", "poorly indexed"], "forbidden_terms": ["no drawbacks"], "expected_source_types": ["semantic_chunk", "atom"], "notes": "The final comparison drawback focuses on weak retrieval and index quality.", "query_type": "exact_timestamp"
+    },
+    {
+      "question_id": "qa_000041", "video_id": "mcp_vs_api", "query": "What was the weather during the lecture recording?", "expected_outcome": "unrelated_to_video", "expected_start_ms_min": null, "expected_start_ms_max": null, "required_terms": ["weather"], "forbidden_terms": ["answer from video"], "expected_source_types": [], "notes": "The lecture provides no weather evidence.", "query_type": "unrelated_or_general"
+    },
+    {
+      "question_id": "qa_000042", "video_id": "mcp_vs_api", "query": "Who won the most recent FIFA World Cup?", "expected_outcome": "unrelated_to_video", "expected_start_ms_min": null, "expected_start_ms_max": null, "required_terms": ["FIFA World Cup"], "forbidden_terms": ["RAG"], "expected_source_types": [], "notes": "This general-knowledge question is unrelated to the lecture.", "query_type": "unrelated_or_general"
+    },
+    {
+      "question_id": "qa_000043", "video_id": "mcp_vs_api", "query": "What is the capital city of Japan?", "expected_outcome": "unrelated_to_video", "expected_start_ms_min": null, "expected_start_ms_max": null, "required_terms": ["Japan"], "forbidden_terms": ["Tokyo from video"], "expected_source_types": [], "notes": "No geographic capital is discussed in the video.", "query_type": "unrelated_or_general"
+    },
+    {
+      "question_id": "qa_000044", "video_id": "mcp_vs_api", "query": "What is the current price of Bitcoin?", "expected_outcome": "unrelated_to_video", "expected_start_ms_min": null, "expected_start_ms_max": null, "required_terms": ["Bitcoin"], "forbidden_terms": ["database update"], "expected_source_types": [], "notes": "The video contains no cryptocurrency pricing information.", "query_type": "unrelated_or_general"
+    },
+    {
+      "question_id": "qa_000045", "video_id": "mcp_vs_api", "query": "Can you recommend a restaurant in Mumbai?", "expected_outcome": "unrelated_to_video", "expected_start_ms_min": null, "expected_start_ms_max": null, "required_terms": ["restaurant", "Mumbai"], "forbidden_terms": ["lecture answer"], "expected_source_types": [], "notes": "Restaurant recommendations are outside this technical lecture.", "query_type": "unrelated_or_general"
+    },
+    {
+      "question_id": "qa_000046", "video_id": "mcp_vs_api", "query": "What are today's stock-market winners?", "expected_outcome": "unrelated_to_video", "expected_start_ms_min": null, "expected_start_ms_max": null, "required_terms": ["stock market"], "forbidden_terms": ["fine tuning"], "expected_source_types": [], "notes": "The recording has no market-performance evidence.", "query_type": "unrelated_or_general"
+    },
+    {
+      "question_id": "qa_000047", "video_id": "mcp_vs_api", "query": "Write a birthday poem for my friend.", "expected_outcome": "unrelated_to_video", "expected_start_ms_min": null, "expected_start_ms_max": null, "required_terms": ["birthday poem"], "forbidden_terms": ["RAG workflow"], "expected_source_types": [], "notes": "Creative writing is not a question about video evidence.", "query_type": "unrelated_or_general"
+    },
+    {
+      "question_id": "qa_000048", "video_id": "mcp_vs_api", "query": "How do I change a flat tire?", "expected_outcome": "unrelated_to_video", "expected_start_ms_min": null, "expected_start_ms_max": null, "required_terms": ["flat tire"], "forbidden_terms": ["retriever"], "expected_source_types": [], "notes": "Vehicle repair is not covered by the lecture.", "query_type": "unrelated_or_general"
+    },
+    {
+      "question_id": "qa_000049", "video_id": "mcp_vs_api", "query": "What is the best recipe for pancakes?", "expected_outcome": "unrelated_to_video", "expected_start_ms_min": null, "expected_start_ms_max": null, "required_terms": ["pancakes"], "forbidden_terms": ["knowledge base"], "expected_source_types": [], "notes": "The video contains no cooking instructions.", "query_type": "unrelated_or_general"
+    },
+    {
+      "question_id": "qa_000050", "video_id": "mcp_vs_api", "query": "What is the population of Brazil?", "expected_outcome": "unrelated_to_video", "expected_start_ms_min": null, "expected_start_ms_max": null, "required_terms": ["Brazil"], "forbidden_terms": ["external context"], "expected_source_types": [], "notes": "The lecture does not discuss population statistics.", "query_type": "unrelated_or_general"
+    },
+    {
+      "question_id": "qa_000051", "video_id": "mcp_vs_api", "query": "What does that mean?", "expected_outcome": "clarification_required", "expected_start_ms_min": null, "expected_start_ms_max": null, "required_terms": ["clarification"], "forbidden_terms": ["assume referent"], "expected_source_types": [], "notes": "The referent is unspecified and could indicate several lecture concepts.", "query_type": "ambiguous_query"
+    },
+    {
+      "question_id": "qa_000052", "video_id": "mcp_vs_api", "query": "When did he explain it?", "expected_outcome": "clarification_required", "expected_start_ms_min": null, "expected_start_ms_max": null, "required_terms": ["clarification", "it"], "forbidden_terms": ["invent timestamp"], "expected_source_types": [], "notes": "The question lacks a subject for the requested explanation time.", "query_type": "ambiguous_query"
+    },
+    {
+      "question_id": "qa_000053", "video_id": "mcp_vs_api", "query": "What was on the slide?", "expected_outcome": "clarification_required", "expected_start_ms_min": null, "expected_start_ms_max": null, "required_terms": ["clarification", "slide"], "forbidden_terms": ["choose a slide"], "expected_source_types": [], "notes": "Multiple workflow and comparison visuals appear; no slide is identified.", "query_type": "ambiguous_query"
+    },
+    {
+      "question_id": "qa_000054", "video_id": "mcp_vs_api", "query": "Is it better?", "expected_outcome": "clarification_required", "expected_start_ms_min": null, "expected_start_ms_max": null, "required_terms": ["clarification", "better"], "forbidden_terms": ["unqualified comparison"], "expected_source_types": [], "notes": "The comparison target and evaluation criterion are missing.", "query_type": "ambiguous_query"
+    },
+    {
+      "question_id": "qa_000055", "video_id": "mcp_vs_api", "query": "Who was the speaker talking about?", "expected_outcome": "clarification_required", "expected_start_ms_min": null, "expected_start_ms_max": null, "required_terms": ["clarification", "speaker"], "forbidden_terms": ["guess entity"], "expected_source_types": [], "notes": "No referenced sentence or person is supplied.", "query_type": "ambiguous_query"
+    },
+    {
+      "question_id": "qa_000056", "video_id": "mcp_vs_api", "query": "What happened after that part?", "expected_outcome": "clarification_required", "expected_start_ms_min": null, "expected_start_ms_max": null, "required_terms": ["clarification", "part"], "forbidden_terms": ["assume segment"], "expected_source_types": [], "notes": "The antecedent part of the lecture is not identified.", "query_type": "ambiguous_query"
+    },
+    {
+      "question_id": "qa_000057", "video_id": "mcp_vs_api", "query": "Can you explain the important difference?", "expected_outcome": "clarification_required", "expected_start_ms_min": null, "expected_start_ms_max": null, "required_terms": ["clarification", "difference"], "forbidden_terms": ["assume RAG comparison"], "expected_source_types": [], "notes": "The question does not state which two concepts should be compared.", "query_type": "ambiguous_query"
+    },
+    {
+      "question_id": "qa_000058", "video_id": "mcp_vs_api", "query": "Where is the example?", "expected_outcome": "clarification_required", "expected_start_ms_min": null, "expected_start_ms_max": null, "required_terms": ["clarification", "example"], "forbidden_terms": ["pick an example"], "expected_source_types": [], "notes": "The lecture has several examples, including medical records and 10-K reports.", "query_type": "ambiguous_query"
+    },
+    {
+      "question_id": "qa_000059", "video_id": "mcp_vs_api", "query": "Does the model change?", "expected_outcome": "clarification_required", "expected_start_ms_min": null, "expected_start_ms_max": null, "required_terms": ["clarification", "model"], "forbidden_terms": ["assume RAG or fine tuning"], "expected_source_types": [], "notes": "The answer depends on whether the user means RAG or fine tuning.", "query_type": "ambiguous_query"
+    },
+    {
+      "question_id": "qa_000060", "video_id": "mcp_vs_api", "query": "Can you give me the timestamp for the key point?", "expected_outcome": "clarification_required", "expected_start_ms_min": null, "expected_start_ms_max": null, "required_terms": ["clarification", "key point"], "forbidden_terms": ["arbitrary timestamp"], "expected_source_types": [], "notes": "Several key points are presented, so the intended concept must be clarified.", "query_type": "ambiguous_query"
+    }
+  ]
+}
