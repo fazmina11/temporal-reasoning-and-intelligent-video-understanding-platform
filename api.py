@@ -68,6 +68,8 @@ from src.pipeline.agentic.contracts import (
 from src.pipeline.agentic.conversation_resolver import resolve_conversation_references
 from src.pipeline.agentic.query_understanding import understand_query
 from src.pipeline.agentic.scope_router import ScopeAction, route_scope
+from src.pipeline.agentic.scope_profile import build_video_scope_profile
+from src.pipeline.agentic.citation_registry import build_evidence_registry
 from src.pipeline.agentic.trace_repository import TraceRepository
 from src.pipeline.agentic.retrieval_planner import create_retrieval_plan
 from src.pipeline.agentic.retrieval_orchestrator import RetrievalOrchestrator
@@ -414,6 +416,30 @@ async def process_pipeline(video_id: str, video_path: str):
         processing_status[video_id]["hierarchy_index_collections"] = (
             index_result["collections"]
         )
+
+        scope_profile = await loop.run_in_executor(
+            None,
+            partial(
+                build_video_scope_profile,
+                repo_root=REPO_ROOT,
+                video_id=video_id,
+            ),
+        )
+        processing_status[video_id]["scope_profile_path"] = (
+            scope_profile.get("profile_path")
+            or load_manifest(repo_root=REPO_ROOT, video_id=video_id)["artifacts"].get("scope_profile_path")
+        )
+        registry_result = await loop.run_in_executor(
+            None,
+            partial(
+                build_evidence_registry,
+                repo_root=REPO_ROOT,
+                video_id=video_id,
+            ),
+        )
+        processing_status[video_id]["evidence_registry_path"] = (
+            registry_result.get("registry_path")
+        )
         
         # Phase 2: Visual Enrichment
         processing_status[video_id]["status"] = "Phase 2: Visual Analysis (Gemini)"
@@ -604,7 +630,9 @@ def _response_from_agentic_generation(
     citations = [
         Citation(
             citation_id=item["citation_id"],
+            evidence_id=item.get("evidence_id"),
             source_type=_source_type(item.get("source_type")),
+            canonical_source_type=item.get("canonical_source_type"),
             source_id=str(item["source_id"]),
             video_id=item.get("video_id") or request.video_id,
             start_ms=item.get("start_ms"),
@@ -613,6 +641,10 @@ def _response_from_agentic_generation(
             end_seconds=(item.get("end_ms") or 0) / 1000,
             parent_chunk_id=item.get("parent_chunk_id"),
             parent_event_id=item.get("parent_event_id"),
+            evidence_anchor=item.get("evidence_anchor") or {},
+            answer_context_window=item.get("answer_context_window") or {},
+            citation_interval=item.get("citation_interval") or {},
+            quality_score=item.get("quality_score"),
             text=next(
                 (
                     evidence.get("text")
@@ -708,6 +740,7 @@ def _agentic_prelude(request: QueryRequest) -> tuple[RetrievalTrace, dict[str, A
     understanding = understand_query(
         raw_query=request.query,
         standalone_query=resolved["standalone_query"],
+        conversation_resolution=resolved,
     )
     scope = route_scope(
         repo_root=REPO_ROOT,
@@ -758,10 +791,13 @@ def _execute_plan_stage(
         candidates=deduped["candidates"],
         query_understanding=query_understanding,
     )
+    verification["retrieval_warnings"] = retrieval.get("warnings", [])
+    verification["retrieval_attempts"] = retrieval.get("attempts", [])
     answerability = evaluate_answerability(
         verified_evidence=verification["verified_evidence"],
         query_understanding=query_understanding,
         scope_decision=scope_decision,
+        verification_summary=verification,
     )
     return {
         "plan": plan,
@@ -813,6 +849,8 @@ def _run_retrieval_gate(
             {
                 "attempt": attempt,
                 "strategy": corrective_plan.strategy,
+                "reason": corrective_plan.corrective_reason,
+                "actions": corrective_plan.corrective_actions,
                 "decision": corrective_stage["answerability"]["decision"],
                 "score": corrective_stage["answerability"]["score"],
             }
@@ -875,9 +913,12 @@ def _run_agentic_answer_pipeline(
         verified_evidence=retrieval_gate["verification"]["verified_evidence"],
         temporal_context=temporal_context,
         answerability=retrieval_gate["answerability"],
+        repo_root=REPO_ROOT,
+        query_understanding=query_understanding,
     )
     trace.evidence_packet_summary = {
         "citation_count": len(evidence_packet["citations"]),
+        "citation_validation": evidence_packet.get("citation_validation"),
         "verified_evidence_count": len(evidence_packet["verified_evidence"]),
         "primary_moment": evidence_packet["temporal_context"].get("primary_moment"),
         "missing_evidence_notes": evidence_packet.get("missing_evidence_notes", []),
@@ -969,6 +1010,15 @@ async def ask_question(request: QueryRequest):
                     retrieval_gate=retrieval_gate,
                     query_understanding=understanding,
                 )
+            elif decision == "processing_incomplete":
+                response = _policy_response(
+                    request=request,
+                    trace_id=trace.trace_id,
+                    outcome=Outcome.PROCESSING_INCOMPLETE,
+                    answer="The requested evidence depends on processing that is incomplete or unavailable for this video.",
+                    confidence=float(retrieval_gate["answerability"].get("score", 0.0)),
+                    warning="processing_incomplete",
+                )
             elif decision == "corrective_retrieval":
                 response = _policy_response(
                     request=request,
@@ -1031,6 +1081,15 @@ async def ask_question_debug(request: QueryRequest):
                     query_understanding=understanding,
                 )
                 result = trace.generation
+            elif retrieval_gate["answerability"]["decision"] == "processing_incomplete":
+                response = _policy_response(
+                    request=request,
+                    trace_id=trace.trace_id,
+                    outcome=Outcome.PROCESSING_INCOMPLETE,
+                    answer="Debug route stopped because required modality processing is incomplete.",
+                    confidence=float(retrieval_gate["answerability"].get("score", 0.0)),
+                    warning="processing_incomplete",
+                )
             else:
                 response = _policy_response(
                     request=request,

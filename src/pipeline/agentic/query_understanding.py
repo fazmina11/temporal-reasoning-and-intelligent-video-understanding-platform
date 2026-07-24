@@ -80,7 +80,12 @@ def parse_quoted_phrases(text: str) -> list[str]:
     return [m.group(1).strip() for m in re.finditer(r"[\"']([^\"']{2,})[\"']", text) if m.group(1).strip()]
 
 
-def understand_query(*, raw_query: str, standalone_query: str | None = None) -> dict[str, Any]:
+def understand_query(
+    *,
+    raw_query: str,
+    standalone_query: str | None = None,
+    conversation_resolution: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     query = (standalone_query or raw_query).strip()
     lowered = query.lower()
     query_types: set[str] = set()
@@ -140,6 +145,13 @@ def understand_query(*, raw_query: str, standalone_query: str | None = None) -> 
         query_types.add("unknown")
 
     is_episodic = is_episodic_memory_query(query, sorted(query_types))
+    resolution = conversation_resolution or {}
+    unresolved_references = list(resolution.get("unresolved_references") or [])
+    is_ambiguous_without_context = bool(
+        resolution.get("needs_clarification")
+        and resolution.get("requires_reference")
+        and not resolution.get("reference_resolved")
+    )
 
     return {
         "query_id": f"query_{uuid4().hex[:12]}",
@@ -164,6 +176,11 @@ def understand_query(*, raw_query: str, standalone_query: str | None = None) -> 
         "requires_transcript_search": True,
         "requires_event_search": bool(query_types & {"summary", "comparison", "cause_effect", "definition", "concept"}),
         "classification_confidence": 0.85 if "unknown" not in query_types else 0.45,
+        "unresolved_references": unresolved_references,
+        "requires_reference": bool(resolution.get("requires_reference", "follow_up" in query_types)),
+        "reference_resolved": bool(resolution.get("reference_resolved", False)),
+        "is_ambiguous_without_context": is_ambiguous_without_context,
+        "ambiguity_reasons": list(resolution.get("ambiguity_reasons") or []),
     }
 
 

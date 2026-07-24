@@ -57,7 +57,9 @@ class AskRequest(BaseModel):
 
 class Citation(BaseModel):
     citation_id: str = Field(..., min_length=1)
+    evidence_id: str | None = None
     source_type: SourceType = SourceType.UNKNOWN
+    canonical_source_type: str | None = None
     source_id: str = Field(..., min_length=1)
     video_id: str | None = None
     start_ms: int | None = Field(default=None, ge=0)
@@ -67,6 +69,10 @@ class Citation(BaseModel):
     timestamp: str | None = None
     text: str | None = None
     visual_summary: str | None = None
+    evidence_anchor: dict[str, Any] = Field(default_factory=dict)
+    answer_context_window: dict[str, Any] = Field(default_factory=dict)
+    citation_interval: dict[str, Any] = Field(default_factory=dict)
+    quality_score: float | None = Field(default=None, ge=0, le=1)
     parent_chunk_id: str | None = None
     parent_event_id: str | None = None
     confidence: float | None = Field(default=None, ge=0, le=1)
@@ -174,6 +180,9 @@ class RetrievalPlan(BaseModel):
     requires_temporal_reasoning: bool = True
     max_corrective_attempts: int = Field(default=1, ge=0, le=3)
     answer_mode: AnswerMode = AnswerMode.STRICT_VIDEO
+    corrective_reason: str | None = None
+    corrective_actions: list[str] = Field(default_factory=list)
+    retry_number: int | None = Field(default=None, ge=1)
 
     @validator("retrieval_steps")
     def _has_steps(cls, value: list[RetrievalStep]) -> list[RetrievalStep]:

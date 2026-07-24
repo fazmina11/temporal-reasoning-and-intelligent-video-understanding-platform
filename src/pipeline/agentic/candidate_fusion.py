@@ -69,10 +69,14 @@ def fuse_candidates(
     for index, row in enumerate(ranked, start=1):
         row["fusion_rank"] = index
         row["fused_score"] = round(row["fused_score"], 6)
+    top_score = float(ranked[0]["fused_score"]) if ranked else 0.0
+    second_score = float(ranked[1]["fused_score"]) if len(ranked) > 1 else 0.0
     return {
         "rank_constant": RANK_CONSTANT,
         "input_candidate_count": len(candidates),
         "fused_candidate_count": len(ranked),
+        "top_fused_score": top_score,
+        "retrieval_margin": round(max(0.0, top_score - second_score), 6),
         "candidates": ranked,
     }
 

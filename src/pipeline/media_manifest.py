@@ -221,6 +221,8 @@ def create_media_manifest(
         processed_root / "ocr",
         processed_root / "speakers",
         processed_root / "audio_events",
+        processed_root / "scope_profiles",
+        processed_root / "evidence_registry",
         processed_root / "events",
         processed_root / "chapters",
         processed_root / "reports",
@@ -298,6 +300,8 @@ def create_media_manifest(
             "ocr_path": str(repo_root / "data" / "processed" / "ocr" / f"{video_id}.json"),
             "speakers_path": str(repo_root / "data" / "processed" / "speakers" / f"{video_id}.json"),
             "audio_events_path": str(repo_root / "data" / "processed" / "audio_events" / f"{video_id}.json"),
+            "scope_profile_path": str(repo_root / "data" / "processed" / "scope_profiles" / f"{video_id}.json"),
+            "evidence_registry_path": str(repo_root / "data" / "processed" / "evidence_registry" / f"{video_id}.jsonl"),
             "boundaries_path": str(repo_root / "data" / "processed" / "boundaries" / f"{video_id}.json"),
             "semantic_chunks_path": str(repo_root / "data" / "processed" / "semantic_chunks" / f"{video_id}.json"),
             "events_path": str(repo_root / "data" / "processed" / "events" / f"{video_id}.json"),
@@ -355,6 +359,14 @@ def load_manifest(*, repo_root: Path, video_id: str) -> dict[str, Any]:
     artifacts.setdefault(
         "audio_events_path",
         str(repo_root / "data" / "processed" / "audio_events" / f"{video_id}.json"),
+    )
+    artifacts.setdefault(
+        "scope_profile_path",
+        str(repo_root / "data" / "processed" / "scope_profiles" / f"{video_id}.json"),
+    )
+    artifacts.setdefault(
+        "evidence_registry_path",
+        str(repo_root / "data" / "processed" / "evidence_registry" / f"{video_id}.jsonl"),
     )
     artifacts.setdefault(
         "chunk_validation_path",

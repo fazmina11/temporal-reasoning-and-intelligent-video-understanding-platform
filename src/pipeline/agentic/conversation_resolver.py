@@ -17,6 +17,21 @@ FOLLOW_UP_CUES = {
     "previous",
 }
 
+REFERENCE_TERMS = {
+    "that",
+    "this",
+    "it",
+    "there",
+    "same",
+    "previous",
+    "after that",
+    "before that",
+    "that part",
+    "the slide",
+    "the diagram",
+    "the graph",
+}
+
 
 def _first_cited_moment(turns: list[dict[str, Any]]) -> dict[str, Any] | None:
     for turn in reversed(turns):
@@ -51,14 +66,26 @@ def resolve_conversation_references(
     lowered = query.lower()
     has_follow_up_cue = any(re.search(rf"\b{re.escape(cue)}\b", lowered) for cue in FOLLOW_UP_CUES)
     moment = _first_cited_moment(context) if has_follow_up_cue else None
+    unresolved = _unresolved_references(lowered) if has_follow_up_cue and not moment else []
 
     if not moment:
+        needs_clarification = bool(unresolved)
         return {
             "resolution_id": f"res_{uuid4().hex[:12]}",
             "standalone_query": query,
             "resolved_references": {},
-            "resolution_confidence": 1.0 if not has_follow_up_cue else 0.35,
-            "needs_clarification": bool(has_follow_up_cue and context),
+            "resolved_entities": [],
+            "resolved_time_hints_ms": [],
+            "unresolved_references": unresolved,
+            "requires_reference": bool(has_follow_up_cue),
+            "reference_resolved": False,
+            "resolution_confidence": 1.0 if not has_follow_up_cue else 0.25,
+            "needs_clarification": needs_clarification,
+            "ambiguity_reasons": (
+                ["follow-up reference has no prior citation or timeline anchor"]
+                if needs_clarification
+                else []
+            ),
         }
 
     start_ms = moment.get("start_ms") or 0
@@ -75,8 +102,14 @@ def resolve_conversation_references(
         "resolution_id": f"res_{uuid4().hex[:12]}",
         "standalone_query": standalone,
         "resolved_references": {"previous_moment": moment},
+        "resolved_entities": [],
+        "resolved_time_hints_ms": [start_ms],
+        "unresolved_references": [],
+        "requires_reference": True,
+        "reference_resolved": True,
         "resolution_confidence": 0.9,
         "needs_clarification": False,
+        "ambiguity_reasons": [],
     }
 
 
@@ -88,3 +121,12 @@ def _format_ms(ms: int) -> str:
     if hours:
         return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
     return f"{minutes:02d}:{seconds:02d}"
+
+
+def _unresolved_references(lowered_query: str) -> list[str]:
+    unresolved = [
+        term
+        for term in sorted(REFERENCE_TERMS, key=len, reverse=True)
+        if re.search(rf"\b{re.escape(term)}\b", lowered_query)
+    ]
+    return unresolved[:5]

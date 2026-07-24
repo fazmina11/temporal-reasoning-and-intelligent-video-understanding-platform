@@ -5,6 +5,7 @@ from typing import Any
 
 __all__ = [
     "AskPipelineAdapter",
+    "BASELINE_SCHEMA_VERSION",
     "DefaultAskPipelineAdapter",
     "EvaluationResult",
     "EvaluationRun",
@@ -22,9 +23,11 @@ __all__ = [
     "main",
     "run_evaluation_workflow",
     "write_reports",
+    "freeze_baseline",
 ]
 
 _EXPORT_MODULES = {
+    "BASELINE_SCHEMA_VERSION": ".baseline_manager",
     "AskPipelineAdapter": ".evaluate_ask",
     "DefaultAskPipelineAdapter": ".evaluate_ask",
     "EvaluationResult": ".evaluate_ask",
@@ -43,6 +46,7 @@ _EXPORT_MODULES = {
     "generate_json_report": ".report_writer",
     "generate_markdown_report": ".report_writer",
     "write_reports": ".report_writer",
+    "freeze_baseline": ".baseline_manager",
 }
 
 

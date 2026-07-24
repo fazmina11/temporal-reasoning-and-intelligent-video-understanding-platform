@@ -4,6 +4,7 @@ import logging
 from pathlib import Path
 from typing import Any
 
+from ..media_manifest import load_manifest
 from .contracts import RetrievalPlan, RetrievalStep
 from .query_understanding import is_episodic_memory_query
 from .retrievers.base import RetrieverAdapter
@@ -83,13 +84,22 @@ class RetrievalOrchestrator:
                 warnings.append(f"memory_retriever failed: {exc}")
 
         # Execute standard retrieval steps
-        for step in plan.retrieval_steps:
+        for step_index, step in enumerate(plan.retrieval_steps, start=1):
             adapter = self._adapter_for(step)
+            readiness = self._retriever_readiness(video_id, step.retriever)
+            if not readiness["ready"]:
+                warnings.extend(readiness["warnings"])
             try:
                 rows = adapter.retrieve(
                     video_id=video_id,
                     step=step,
                     query_understanding=query_understanding,
+                )
+                rows = self._normalize_candidates(
+                    rows=rows,
+                    video_id=video_id,
+                    step=step,
+                    step_index=step_index,
                 )
                 candidates.extend(rows)
                 attempts.append({
@@ -98,6 +108,8 @@ class RetrievalOrchestrator:
                     "top_k": step.top_k,
                     "weight": step.weight,
                     "candidate_count": len(rows),
+                    "readiness": readiness,
+                    "source_type_counts": _source_type_counts(rows),
                 })
                 if not rows and step.retriever in {
                     "ocr_sparse",
@@ -121,6 +133,48 @@ class RetrievalOrchestrator:
                 warnings.append(f"{step.retriever} failed: {exc}")
 
         return {"candidates": candidates, "attempts": attempts, "warnings": warnings}
+
+    def _normalize_candidates(
+        self,
+        *,
+        rows: list[dict[str, Any]],
+        video_id: str,
+        step: RetrievalStep,
+        step_index: int,
+    ) -> list[dict[str, Any]]:
+        normalized: list[dict[str, Any]] = []
+        seen: set[tuple[str, str, int, int]] = set()
+        for rank, row in enumerate(rows[: step.top_k], start=1):
+            if row.get("video_id") not in {None, "", video_id}:
+                continue
+            start_ms = _safe_int(row.get("start_ms"))
+            end_ms = _safe_int(row.get("end_ms"))
+            if end_ms <= start_ms:
+                end_ms = start_ms + 1
+            source_type = _source_type_value(row.get("source_type"))
+            source_id = str(row.get("source_id") or row.get("id") or f"{source_type}_{rank}")
+            key = (source_type, source_id, start_ms, end_ms)
+            if key in seen:
+                continue
+            seen.add(key)
+            retrieval = dict(row.get("retrieval") or {})
+            retrieval.setdefault("retriever", step.retriever)
+            retrieval.setdefault("raw_score", float(row.get("score", row.get("confidence", 0.0)) or 0.0))
+            retrieval["rank"] = int(retrieval.get("rank") or rank)
+            retrieval.setdefault("query_variant", step.query)
+            normalized.append(
+                {
+                    **row,
+                    "candidate_id": f"cand_{step_index:02d}_{rank:03d}_{source_id}",
+                    "video_id": video_id,
+                    "source_type": source_type,
+                    "source_id": source_id,
+                    "start_ms": start_ms,
+                    "end_ms": end_ms,
+                    "retrieval": retrieval,
+                }
+            )
+        return normalized
 
     def _load_evidence_store(self, video_id: str) -> dict[str, list[dict[str, Any]]]:
         from ..json_artifacts import read_json
@@ -191,3 +245,50 @@ class RetrievalOrchestrator:
             adapter = PlaceholderModalityRetriever(self.repo_root)
         self._adapters[step.retriever] = adapter
         return adapter
+
+    def _retriever_readiness(self, video_id: str, retriever: str) -> dict[str, Any]:
+        try:
+            manifest = load_manifest(repo_root=self.repo_root, video_id=video_id)
+        except Exception as exc:
+            return {"ready": False, "warnings": [f"manifest unavailable for retrieval readiness: {exc}"]}
+        artifacts = manifest.get("artifacts") or {}
+        required_paths = {
+            "local_visual": ["visual_artifacts_path", "semantic_chunks_path"],
+            "ocr_sparse": ["ocr_path"],
+            "speaker": ["speakers_path"],
+            "audio_event": ["audio_events_path"],
+            "sparse_text": ["atoms_path", "semantic_chunks_path", "events_path"],
+            "exact_timeline": ["atoms_path"],
+        }.get(retriever, [])
+        missing = [
+            key
+            for key in required_paths
+            if not artifacts.get(key) or not Path(str(artifacts[key])).is_file()
+        ]
+        warnings = [f"{retriever} readiness missing artifact: {key}" for key in missing]
+        return {"ready": not missing, "missing_artifacts": missing, "warnings": warnings}
+
+
+def _safe_int(value: Any) -> int:
+    try:
+        if isinstance(value, bool):
+            return 0
+        return max(0, int(value))
+    except (TypeError, ValueError):
+        return 0
+
+
+def _source_type_value(value: Any) -> str:
+    raw = getattr(value, "value", value)
+    text = str(raw or "unknown").strip()
+    if text.startswith("SourceType."):
+        return text.rsplit(".", 1)[-1].lower()
+    return text.lower() or "unknown"
+
+
+def _source_type_counts(rows: list[dict[str, Any]]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for row in rows:
+        source_type = _source_type_value(row.get("source_type"))
+        counts[source_type] = counts.get(source_type, 0) + 1
+    return counts

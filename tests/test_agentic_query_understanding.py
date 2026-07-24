@@ -47,6 +47,30 @@ class AgenticQueryUnderstandingTests(unittest.TestCase):
             resolved["resolved_references"]["previous_moment"]["source_id"],
             "chunk_000008",
         )
+        understanding = understand_query(
+            raw_query="What does he say after that?",
+            standalone_query=resolved["standalone_query"],
+            conversation_resolution=resolved,
+        )
+        self.assertFalse(understanding["is_ambiguous_without_context"])
+        self.assertTrue(understanding["reference_resolved"])
+
+    def test_unresolved_follow_up_requests_clarification(self) -> None:
+        resolved = resolve_conversation_references(
+            raw_query="What does that mean?",
+            conversation_context=[],
+        )
+        self.assertTrue(resolved["needs_clarification"])
+        self.assertFalse(resolved["reference_resolved"])
+        self.assertIn("that", resolved["unresolved_references"])
+
+        understanding = understand_query(
+            raw_query="What does that mean?",
+            standalone_query=resolved["standalone_query"],
+            conversation_resolution=resolved,
+        )
+        self.assertTrue(understanding["is_ambiguous_without_context"])
+        self.assertIn("follow_up", understanding["query_types"])
 
 
 if __name__ == "__main__":

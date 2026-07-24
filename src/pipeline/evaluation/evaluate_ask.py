@@ -91,9 +91,17 @@ class EvaluationResult:
     success: bool = False
     expected_start_ms_min: int | None = None
     expected_start_ms_max: int | None = None
+    expected_time_windows: list[dict[str, int]] = field(default_factory=list)
     required_terms: list[str] = field(default_factory=list)
+    required_concepts: list[list[str]] = field(default_factory=list)
     forbidden_terms: list[str] = field(default_factory=list)
     expected_source_types: list[str] = field(default_factory=list)
+    acceptable_source_types: list[str] = field(default_factory=list)
+    acceptable_outcomes: list[str] = field(default_factory=list)
+    forbidden_outcomes: list[str] = field(default_factory=list)
+    requires_timestamp: bool | None = None
+    requires_citation: bool | None = None
+    negative_category: str | None = None
 
 
 @dataclass
@@ -164,9 +172,17 @@ class EvaluationRunner:
                 success=True,
                 expected_start_ms_min=item.expected_start_ms_min,
                 expected_start_ms_max=item.expected_start_ms_max,
+                expected_time_windows=[dict(window) for window in item.expected_time_windows],
                 required_terms=list(item.required_terms),
+                required_concepts=[list(group) for group in item.required_concepts],
                 forbidden_terms=list(item.forbidden_terms),
                 expected_source_types=list(item.expected_source_types),
+                acceptable_source_types=list(item.acceptable_source_types),
+                acceptable_outcomes=list(item.acceptable_outcomes),
+                forbidden_outcomes=list(item.forbidden_outcomes),
+                requires_timestamp=item.requires_timestamp,
+                requires_citation=item.requires_citation,
+                negative_category=item.negative_category,
             )
             LOGGER.debug(
                 "Executed question_id=%s in %.3f ms.", item.question_id, result.latency_ms
@@ -185,9 +201,17 @@ class EvaluationRunner:
                 success=False,
                 expected_start_ms_min=item.expected_start_ms_min,
                 expected_start_ms_max=item.expected_start_ms_max,
+                expected_time_windows=[dict(window) for window in item.expected_time_windows],
                 required_terms=list(item.required_terms),
+                required_concepts=[list(group) for group in item.required_concepts],
                 forbidden_terms=list(item.forbidden_terms),
                 expected_source_types=list(item.expected_source_types),
+                acceptable_source_types=list(item.acceptable_source_types),
+                acceptable_outcomes=list(item.acceptable_outcomes),
+                forbidden_outcomes=list(item.forbidden_outcomes),
+                requires_timestamp=item.requires_timestamp,
+                requires_citation=item.requires_citation,
+                negative_category=item.negative_category,
             )
 
     def collect_results(

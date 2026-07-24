@@ -66,6 +66,43 @@ class EvaluationMetricsTests(unittest.TestCase):
         self.assertEqual(timestamp_hit_rate([result]), 0.0)
         self.assertEqual(citation_validity_rate([result]), 0.0)
 
+    def test_phase_n_labels_affect_scoring(self) -> None:
+        result = EvaluationResult(
+            question_id="q_001",
+            query="Explain the lookup layer.",
+            expected_outcome="grounded_answer",
+            predicted_outcome="partial_answer",
+            latency_ms=5.0,
+            raw_response={"answer": "The lookup layer uses a knowledge base."},
+            citations=[
+                {
+                    "source_id": "event_001",
+                    "source_type": "event",
+                    "start_ms": 9_000,
+                    "end_ms": 12_000,
+                }
+            ],
+            success=True,
+            acceptable_outcomes=["grounded_answer", "partial_answer"],
+            forbidden_outcomes=["unrelated_to_video"],
+            expected_time_windows=[{"start_ms": 10_000, "end_ms": 11_000}],
+            acceptable_source_types=["semantic_chunk", "event"],
+            required_concepts=[["retrieval", "lookup"], ["database", "knowledge base"]],
+        )
+        metrics = calculate_metrics(
+            EvaluationRun(
+                video_id="video_001",
+                run_timestamp=datetime.now(timezone.utc),
+                runner_version="test",
+                results=[result],
+            )
+        )
+
+        self.assertEqual(metrics.outcome_accuracy, 1.0)
+        self.assertEqual(metrics.timestamp_hit_rate, 1.0)
+        self.assertEqual(metrics.citation_validity_rate, 1.0)
+        self.assertEqual(metrics.required_term_coverage, 1.0)
+
 
 if __name__ == "__main__":
     unittest.main()

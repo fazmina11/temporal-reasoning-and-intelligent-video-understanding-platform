@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from ..json_artifacts import read_json
+from .scope_analyzer import analyze_video_scope
 from .contracts import AnswerMode
 
 
@@ -54,20 +55,48 @@ def route_scope(
     query_types = set(query_understanding.get("query_types") or [])
     query = query_understanding.get("standalone_query") or query_understanding.get("raw_query") or ""
 
-    if "system_or_help" in query_types and not _has_video_reference(query):
-        return _apply_policy("unrelated", 0.9, ["query asks about system usage, not selected video"], mode)
+    if query_understanding.get("is_ambiguous_without_context"):
+        return {
+            "scope": "ambiguous",
+            "confidence": 0.88,
+            "reasons": query_understanding.get("ambiguity_reasons")
+            or ["query contains unresolved references and no usable conversation anchor"],
+            "policy_action": ScopeAction.CLARIFY,
+            "unresolved_references": query_understanding.get("unresolved_references") or [],
+        }
 
-    if "unrelated_or_general" in query_types and not _has_video_reference(query):
-        return _apply_policy("unrelated", 0.85, ["query matches general-knowledge cues"], mode)
+    scope_analysis = analyze_video_scope(
+        repo_root=repo_root,
+        video_id=video_id,
+        query_understanding=query_understanding,
+        answer_mode=mode,
+    )
 
-    probe = _probe_video_artifacts(repo_root, video_id, query)
-    if probe["score"] >= 0.18:
+    if "system_or_help" in query_types and not _has_video_reference(query) and scope_analysis["scope_score"] < 0.18:
+        return _apply_policy(
+            "unrelated",
+            0.9,
+            ["query asks about system usage, not selected video"],
+            mode,
+            scope_analysis,
+        )
+
+    if scope_analysis["strict_unrelated"]:
+        return _apply_policy(
+            "unrelated",
+            0.86,
+            ["scope profile found no meaningful overlap with the selected video"],
+            mode,
+            scope_analysis,
+        )
+
+    if scope_analysis["scope_score"] >= scope_analysis["thresholds"]["probable_related_threshold"]:
         return {
             "scope": "video_related",
-            "confidence": min(0.95, 0.55 + probe["score"]),
-            "reasons": probe["reasons"] or ["query overlaps selected video evidence"],
+            "confidence": min(0.95, 0.55 + scope_analysis["scope_score"]),
+            "reasons": _scope_reasons(scope_analysis) or ["query overlaps selected video scope profile"],
             "policy_action": ScopeAction.RETRIEVE_VIDEO,
-            "probe": probe,
+            "scope_analysis": scope_analysis,
         }
 
     if _has_video_reference(query) or query_types & {"exact_timestamp", "visual_memory", "ocr_or_slide_text", "audio_memory", "before_after", "speaker_question", "follow_up"}:
@@ -76,7 +105,7 @@ def route_scope(
             "confidence": 0.62,
             "reasons": ["query contains video/timeline/speaker cues"],
             "policy_action": ScopeAction.RETRIEVE_VIDEO,
-            "probe": probe,
+            "scope_analysis": scope_analysis,
         }
 
     if mode == AnswerMode.CLARIFY_WHEN_AMBIGUOUS:
@@ -85,10 +114,10 @@ def route_scope(
             "confidence": 0.5,
             "reasons": ["query has weak video overlap and no clear video reference"],
             "policy_action": ScopeAction.CLARIFY,
-            "probe": probe,
+            "scope_analysis": scope_analysis,
         }
 
-    return _apply_policy("unrelated", 0.72, ["query has weak overlap with selected video evidence"], mode, probe)
+    return _apply_policy("unrelated", 0.72, ["query has weak overlap with selected video scope"], mode, scope_analysis)
 
 
 def _apply_policy(
@@ -186,3 +215,17 @@ def _collect_text(value: Any) -> list[str]:
         for item in value:
             texts.extend(_collect_text(item))
     return texts
+
+
+def _scope_reasons(scope_analysis: dict[str, Any]) -> list[str]:
+    reasons: list[str] = []
+    if scope_analysis.get("matched_entities"):
+        reasons.append(f"matched video entities: {', '.join(scope_analysis['matched_entities'][:6])}")
+    if scope_analysis.get("matched_terms"):
+        reasons.append(f"matched video terms: {', '.join(scope_analysis['matched_terms'][:8])}")
+    signals = scope_analysis.get("signals") or {}
+    if signals.get("conversation_reference_score"):
+        reasons.append("conversation reference resolves into the selected video")
+    if signals.get("timestamp_reference_score"):
+        reasons.append("query contains a timestamp reference")
+    return reasons

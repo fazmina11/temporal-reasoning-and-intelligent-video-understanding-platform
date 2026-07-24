@@ -20,6 +20,7 @@ def create_corrective_plan(
     missing_modalities = set(query_understanding.get("required_modalities") or [])
     existing = {(step.retriever, step.query.lower()) for step in original_plan.retrieval_steps}
     steps = list(original_plan.retrieval_steps)
+    actions: list[str] = []
 
     expanded_queries = _safe_query_expansions(query, query_understanding)
     for expanded in expanded_queries:
@@ -41,11 +42,14 @@ def create_corrective_plan(
                     )
                 )
                 existing.add(key)
+                actions.append(f"retry_{retriever}")
 
     if "visual" in missing_modalities and ("local_visual", query.lower()) not in existing:
         steps.append(RetrievalStep(retriever="local_visual", level="atomic_span", query=query, top_k=25, weight=1.2))
+        actions.append("add_local_visual")
     if "visual" in missing_modalities and ("visual_dense", query.lower()) not in existing:
         steps.append(RetrievalStep(retriever="visual_dense", level="semantic_chunk", query=query, top_k=30, weight=1.3))
+        actions.append("add_visual_dense")
     for modality, retriever, level in [
         ("ocr", "ocr_sparse", "frame"),
         ("speaker", "speaker", "speaker_turn"),
@@ -53,6 +57,7 @@ def create_corrective_plan(
     ]:
         if modality in missing_modalities and (retriever, query.lower()) not in existing:
             steps.append(RetrievalStep(retriever=retriever, level=level, query=query, top_k=25, weight=1.3))
+            actions.append(f"add_{retriever}")
 
     policy = original_plan.context_policy
     policy.max_previous_atoms = min(20, policy.max_previous_atoms + 2)
@@ -67,6 +72,9 @@ def create_corrective_plan(
         requires_temporal_reasoning=True,
         max_corrective_attempts=original_plan.max_corrective_attempts,
         answer_mode=original_plan.answer_mode,
+        corrective_reason=_correction_reason(answerability),
+        corrective_actions=_dedupe(actions)[:10],
+        retry_number=attempt + 1,
     )
 
 
@@ -93,3 +101,21 @@ def _safe_query_expansions(query: str, query_understanding: dict[str, Any]) -> l
         if text and text.lower() not in {seen.lower() for seen in deduped}:
             deduped.append(text)
     return deduped[:3]
+
+
+def _correction_reason(answerability: dict[str, Any]) -> str:
+    codes = answerability.get("reason_codes") or []
+    if codes:
+        return str(codes[0]).lower()
+    return str(answerability.get("reasons", ["weak_evidence"])[0]).lower().replace(" ", "_")
+
+
+def _dedupe(values: list[str]) -> list[str]:
+    result: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        if value in seen:
+            continue
+        seen.add(value)
+        result.append(value)
+    return result

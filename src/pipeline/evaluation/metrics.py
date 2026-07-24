@@ -48,8 +48,13 @@ def _outcome(value: str | None) -> str | None:
     return "clarification_required" if value == "ambiguous_query" else value
 
 
+def _expected_outcomes(result: EvaluationResult) -> set[str]:
+    values = result.acceptable_outcomes or [result.expected_outcome]
+    return {_outcome(value) or "" for value in values}
+
+
 def _grounded(result: EvaluationResult) -> bool:
-    return _outcome(result.expected_outcome) == "grounded_answer"
+    return bool(_expected_outcomes(result) & {"grounded_answer", "partial_answer"})
 
 
 def _interval(value: Mapping[str, Any]) -> tuple[int, int] | None:
@@ -74,17 +79,31 @@ def _answer(result: EvaluationResult) -> str:
 def outcome_accuracy(results: Iterable[EvaluationResult]) -> float:
     """Rate of expected-outcome agreement, including clarification aliases."""
     values = list(results)
-    return _rate(sum(_outcome(r.expected_outcome) == _outcome(r.predicted_outcome) for r in values), len(values))
+    correct = 0
+    for result in values:
+        predicted = _outcome(result.predicted_outcome)
+        if predicted in _expected_outcomes(result) and predicted not in {
+            _outcome(value) for value in result.forbidden_outcomes
+        }:
+            correct += 1
+    return _rate(correct, len(values))
 
 
 def timestamp_hit_rate(results: Iterable[EvaluationResult]) -> float:
     """Rate of expected windows overlapped by a response or citation timestamp."""
-    eligible = [r for r in results if r.expected_start_ms_min is not None and r.expected_start_ms_max is not None]
+    eligible = [
+        r for r in results
+        if _expected_windows(r) or r.requires_timestamp is True
+    ]
     hits = 0
     for result in eligible:
-        expected = (result.expected_start_ms_min, result.expected_start_ms_max)
+        windows = _expected_windows(result)
         candidates = [_mapping(result.raw_response), *(_mapping(citation) for citation in result.citations)]
-        if any((interval := _interval(candidate)) is not None and _overlaps(expected, interval) for candidate in candidates):
+        if windows and any(
+            (interval := _interval(candidate)) is not None
+            and any(_overlaps(expected, interval) for expected in windows)
+            for candidate in candidates
+        ):
             hits += 1
     return _rate(hits, len(eligible))
 
@@ -102,11 +121,13 @@ def is_valid_citation(citation: Any, result: EvaluationResult) -> bool:
     source_type = getattr(source_type, "value", source_type)
     if not isinstance(source_id, str) or not source_id.strip() or not isinstance(source_type, str) or not source_type.strip():
         return False
-    if result.expected_source_types and source_type not in result.expected_source_types:
+    expected_source_types = result.acceptable_source_types or result.expected_source_types
+    if expected_source_types and source_type not in expected_source_types:
         return False
-    if result.expected_start_ms_min is not None and result.expected_start_ms_max is not None:
+    windows = _expected_windows(result)
+    if windows:
         interval = _interval(values)
-        return interval is not None and _overlaps((result.expected_start_ms_min, result.expected_start_ms_max), interval)
+        return interval is not None and any(_overlaps(expected, interval) for expected in windows)
     return True
 
 
@@ -118,8 +139,19 @@ def citation_validity_rate(results: Iterable[EvaluationResult]) -> float:
 
 def required_term_coverage(results: Iterable[EvaluationResult]) -> float:
     """Case-insensitive required-term coverage across grounded answer text."""
-    pairs = [(term, _answer(result).casefold()) for result in results if _grounded(result) for term in result.required_terms]
-    return _rate(sum(term.casefold() in answer for term, answer in pairs), len(pairs), empty=1.0)
+    total = 0
+    matched = 0
+    for result in results:
+        if not _grounded(result):
+            continue
+        answer = _answer(result).casefold()
+        for term in result.required_terms:
+            total += 1
+            matched += term.casefold() in answer
+        for group in result.required_concepts:
+            total += 1
+            matched += any(term.casefold() in answer for term in group)
+    return _rate(matched, total, empty=1.0)
 
 
 def unsupported_claim_rate(results: Iterable[EvaluationResult]) -> float:
@@ -136,8 +168,8 @@ def unsupported_claim_rate(results: Iterable[EvaluationResult]) -> float:
 def negative_question_abstention_rate(results: Iterable[EvaluationResult]) -> float:
     """Rate of correctly abstained unrelated or evidence-not-found questions."""
     negatives = {"unrelated_to_video", "video_evidence_not_found"}
-    eligible = [result for result in results if _outcome(result.expected_outcome) in negatives]
-    return _rate(sum(_outcome(r.predicted_outcome) == _outcome(r.expected_outcome) for r in eligible), len(eligible))
+    eligible = [result for result in results if _expected_outcomes(result) & negatives]
+    return _rate(sum(_outcome(r.predicted_outcome) in _expected_outcomes(r) for r in eligible), len(eligible))
 
 
 def average_confidence(results: Iterable[EvaluationResult]) -> float:
@@ -174,3 +206,15 @@ def calculate_metrics(run: EvaluationRun) -> EvaluationMetrics:
         average_confidence=average_confidence(results), average_latency_ms=average_latency_ms(results),
         fallback_rate=fallback_rate(results),
     )
+
+
+def _expected_windows(result: EvaluationResult) -> list[tuple[int, int]]:
+    windows: list[tuple[int, int]] = []
+    if result.expected_start_ms_min is not None and result.expected_start_ms_max is not None:
+        windows.append((result.expected_start_ms_min, result.expected_start_ms_max))
+    for window in result.expected_time_windows:
+        start = window.get("start_ms")
+        end = window.get("end_ms")
+        if isinstance(start, int) and not isinstance(start, bool) and isinstance(end, int) and not isinstance(end, bool) and start <= end:
+            windows.append((start, end))
+    return windows

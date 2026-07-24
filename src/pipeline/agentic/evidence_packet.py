@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
+
+from .citation_registry import canonicalize_citation_evidence, validate_citation_objects
 
 
 def build_evidence_packet(
@@ -10,37 +13,65 @@ def build_evidence_packet(
     verified_evidence: list[dict[str, Any]],
     temporal_context: dict[str, Any],
     answerability: dict[str, Any],
+    repo_root: Path | None = None,
+    query_understanding: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     ordered_evidence = _order_evidence(verified_evidence, temporal_context)
     citations = []
     evidence_items = []
     for index, item in enumerate(ordered_evidence[:8], start=1):
         citation_id = f"S{index}"
+        canonical = (
+            canonicalize_citation_evidence(
+                repo_root=repo_root,
+                video_id=request["video_id"],
+                item=item,
+                citation_id=citation_id,
+                temporal_context=temporal_context,
+                question=(query_understanding or {}).get("standalone_query") or request["query"],
+            )
+            if repo_root is not None
+            else {**item, "citation_id": citation_id, "evidence_id": f"E_DYNAMIC_{index:06d}", "canonical_source_type": item["source_type"], "evidence_anchor": {"start_ms": item["start_ms"], "end_ms": item["end_ms"], "score": 0.5, "reason": "legacy"}, "answer_context_window": {"start_ms": item["start_ms"], "end_ms": item["end_ms"]}, "citation_interval": {"start_ms": item["start_ms"], "end_ms": item["end_ms"]}}
+        )
         citations.append(
             {
                 "citation_id": citation_id,
-                "source_type": item["source_type"],
-                "source_id": item["source_id"],
-                "video_id": item["video_id"],
-                "start_ms": item["start_ms"],
-                "end_ms": item["end_ms"],
-                "parent_chunk_id": item.get("parent_chunk_id"),
-                "parent_event_id": item.get("parent_event_id"),
+                "evidence_id": canonical["evidence_id"],
+                "source_type": canonical["source_type"],
+                "canonical_source_type": canonical["canonical_source_type"],
+                "source_id": canonical["source_id"],
+                "video_id": canonical["video_id"],
+                "start_ms": canonical["start_ms"],
+                "end_ms": canonical["end_ms"],
+                "evidence_anchor": canonical["evidence_anchor"],
+                "answer_context_window": canonical["answer_context_window"],
+                "citation_interval": canonical["citation_interval"],
+                "parent_atom_ids": canonical.get("parent_atom_ids", []),
+                "parent_chunk_id": canonical.get("parent_chunk_id"),
+                "parent_event_id": canonical.get("parent_event_id"),
+                "quality_score": canonical.get("quality_score"),
             }
         )
         evidence_items.append(
             {
                 "citation_id": citation_id,
-                "source_type": item["source_type"],
-                "source_id": item["source_id"],
-                "start_ms": item["start_ms"],
-                "end_ms": item["end_ms"],
-                "text": _clip_text(item.get("transcript") or item.get("text") or ""),
-                "visual_summary": item.get("visual_summary") or "",
-                "media_refs": _safe_media_refs(item.get("media_refs") or {}),
-                "support_score": item.get("support_score", 0.0),
+                "evidence_id": canonical["evidence_id"],
+                "source_type": canonical["source_type"],
+                "canonical_source_type": canonical["canonical_source_type"],
+                "source_id": canonical["source_id"],
+                "start_ms": canonical["start_ms"],
+                "end_ms": canonical["end_ms"],
+                "evidence_anchor": canonical["evidence_anchor"],
+                "answer_context_window": canonical["answer_context_window"],
+                "citation_interval": canonical["citation_interval"],
+                "text": _clip_text(canonical.get("transcript") or canonical.get("text") or ""),
+                "visual_summary": canonical.get("visual_summary") or "",
+                "media_refs": _safe_media_refs(canonical.get("media_refs") or {}),
+                "support_score": canonical.get("support_score", 0.0),
+                "quality_score": canonical.get("quality_score"),
             }
         )
+    citation_validation = validate_citation_objects(citations)
     return {
         "question": request["query"],
         "video_id": request["video_id"],
@@ -48,6 +79,7 @@ def build_evidence_packet(
         "outcome_candidate": outcome_candidate,
         "answerability": answerability,
         "citations": citations,
+        "citation_validation": citation_validation,
         "verified_evidence": evidence_items,
         "temporal_context": {
             "primary_moment": temporal_context.get("primary_moment"),
@@ -72,6 +104,7 @@ def build_evidence_packet(
             "must_cite": bool(citations),
             "must_include_timestamp": bool(citations),
             "no_filesystem_paths": True,
+            "citations_from_registry_only": repo_root is not None,
             "state_limitations": outcome_candidate != "answer",
         },
     }
@@ -117,3 +150,4 @@ def _missing_notes(answerability: dict[str, Any], temporal_context: dict[str, An
     if not temporal_context.get("primary_moment"):
         notes.append("no primary moment found")
     return notes
+

@@ -3,6 +3,7 @@ import unittest
 from pathlib import Path
 
 from src.pipeline.agentic.contracts import AnswerMode
+from src.pipeline.agentic.conversation_resolver import resolve_conversation_references
 from src.pipeline.agentic.query_understanding import understand_query
 from src.pipeline.agentic.scope_router import ScopeAction, route_scope
 from src.pipeline.json_artifacts import write_json_atomic
@@ -104,6 +105,54 @@ class AgenticScopeRouterTests(unittest.TestCase):
             repo_root=self.repo,
             video_id="video_ready",
             query_understanding=understand_query(raw_query="What did the speaker say?"),
+            answer_mode=AnswerMode.STRICT_VIDEO,
+        )
+        self.assertEqual(decision["policy_action"], ScopeAction.RETRIEVE_VIDEO)
+
+    def test_unresolved_follow_up_routes_to_clarification(self) -> None:
+        resolved = resolve_conversation_references(
+            raw_query="What does that mean?",
+            conversation_context=[],
+        )
+        understanding = understand_query(
+            raw_query="What does that mean?",
+            standalone_query=resolved["standalone_query"],
+            conversation_resolution=resolved,
+        )
+        decision = route_scope(
+            repo_root=self.repo,
+            video_id="video_1",
+            query_understanding=understanding,
+            answer_mode=AnswerMode.STRICT_VIDEO,
+        )
+        self.assertEqual(decision["policy_action"], ScopeAction.CLARIFY)
+        self.assertEqual(decision["scope"], "ambiguous")
+
+    def test_resolved_follow_up_can_retrieve(self) -> None:
+        resolved = resolve_conversation_references(
+            raw_query="What does he say after that?",
+            conversation_context=[
+                {
+                    "citations": [
+                        {
+                            "source_id": "event_1",
+                            "source_type": "event",
+                            "start_ms": 1000,
+                            "end_ms": 5000,
+                        }
+                    ]
+                }
+            ],
+        )
+        understanding = understand_query(
+            raw_query="What does he say after that?",
+            standalone_query=resolved["standalone_query"],
+            conversation_resolution=resolved,
+        )
+        decision = route_scope(
+            repo_root=self.repo,
+            video_id="video_1",
+            query_understanding=understanding,
             answer_mode=AnswerMode.STRICT_VIDEO,
         )
         self.assertEqual(decision["policy_action"], ScopeAction.RETRIEVE_VIDEO)

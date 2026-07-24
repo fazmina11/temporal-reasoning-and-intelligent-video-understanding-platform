@@ -27,7 +27,14 @@ def _outcome(value: str | None) -> str | None:
 
 
 def _grounded(result: EvaluationResult) -> bool:
-    return _outcome(result.expected_outcome) == "grounded_answer"
+    return bool(
+        {_outcome(value) for value in (result.acceptable_outcomes or [result.expected_outcome])}
+        & {"grounded_answer", "partial_answer"}
+    )
+
+
+def _expected_outcomes(result: EvaluationResult) -> set[str]:
+    return {_outcome(value) or "" for value in (result.acceptable_outcomes or [result.expected_outcome])}
 
 
 def _answer(result: EvaluationResult) -> str:
@@ -100,7 +107,8 @@ def detect_error_categories(result: EvaluationResult) -> list[str]:
     expected_norm = _outcome(result.expected_outcome)
     predicted_norm = _outcome(result.predicted_outcome)
 
-    if expected_norm != predicted_norm:
+    forbidden = {_outcome(value) for value in result.forbidden_outcomes}
+    if predicted_norm not in _expected_outcomes(result) or predicted_norm in forbidden:
         exp_str = result.expected_outcome or "None"
         pred_str = result.predicted_outcome or "None"
         categories.append(f"Outcome Mismatch (expected: {exp_str}, got: {pred_str})")
@@ -109,7 +117,12 @@ def detect_error_categories(result: EvaluationResult) -> list[str]:
     # Detailed quality checks for matching outcomes
     if _grounded(result):
         ans_text = _answer(result).casefold()
-        if result.required_terms and any(t.casefold() not in ans_text for t in result.required_terms):
+        missing_terms = result.required_terms and any(t.casefold() not in ans_text for t in result.required_terms)
+        missing_concepts = result.required_concepts and any(
+            not any(term.casefold() in ans_text for term in group)
+            for group in result.required_concepts
+        )
+        if missing_terms or missing_concepts:
             categories.append("Missing Required Terms")
 
         forbidden = any(t.casefold() in ans_text for t in result.forbidden_terms)
@@ -155,7 +168,7 @@ def find_failures(results: list[EvaluationResult]) -> list[dict[str, Any]]:
     failures: list[dict[str, Any]] = []
     for r in results:
         is_exec_failure = not r.success or r.error_message is not None
-        is_outcome_mismatch = _outcome(r.expected_outcome) != _outcome(r.predicted_outcome)
+        is_outcome_mismatch = _outcome(r.predicted_outcome) not in _expected_outcomes(r)
         if is_exec_failure or is_outcome_mismatch:
             failures.append({
                 "question_id": r.question_id,
@@ -205,6 +218,9 @@ def generate_json_report(
             "confidence": r.confidence,
             "latency_ms": r.latency_ms,
             "error_message": r.error_message,
+            "acceptable_outcomes": r.acceptable_outcomes,
+            "forbidden_outcomes": r.forbidden_outcomes,
+            "negative_category": r.negative_category,
         }
         for r in run.results
     ]
