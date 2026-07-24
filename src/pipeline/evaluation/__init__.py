@@ -1,22 +1,7 @@
-"""Schemas for defining evaluation datasets for the video QA pipeline."""
+"""Public exports for the video QA evaluation package."""
 
-from .evaluate_ask import (
-    AskPipelineAdapter,
-    DefaultAskPipelineAdapter,
-    EvaluationResult,
-    EvaluationRun,
-    EvaluationRunner,
-    build_arg_parser,
-    main,
-    run_evaluation_workflow,
-)
-from .qa_schema import QADataset, QAItem, QAValidationError
-from .regression_compare import (
-    compare_and_write_reports,
-    compare_reports,
-    generate_markdown_comparison,
-)
-from .report_writer import generate_json_report, generate_markdown_report, write_reports
+from importlib import import_module
+from typing import Any
 
 __all__ = [
     "AskPipelineAdapter",
@@ -24,6 +9,7 @@ __all__ = [
     "EvaluationResult",
     "EvaluationRun",
     "EvaluationRunner",
+    "LocalAskPipelineAdapter",
     "QADataset",
     "QAItem",
     "QAValidationError",
@@ -38,5 +24,35 @@ __all__ = [
     "write_reports",
 ]
 
+_EXPORT_MODULES = {
+    "AskPipelineAdapter": ".evaluate_ask",
+    "DefaultAskPipelineAdapter": ".evaluate_ask",
+    "EvaluationResult": ".evaluate_ask",
+    "EvaluationRun": ".evaluate_ask",
+    "EvaluationRunner": ".evaluate_ask",
+    "LocalAskPipelineAdapter": ".evaluate_ask",
+    "build_arg_parser": ".evaluate_ask",
+    "main": ".evaluate_ask",
+    "run_evaluation_workflow": ".evaluate_ask",
+    "QADataset": ".qa_schema",
+    "QAItem": ".qa_schema",
+    "QAValidationError": ".qa_schema",
+    "compare_and_write_reports": ".regression_compare",
+    "compare_reports": ".regression_compare",
+    "generate_markdown_comparison": ".regression_compare",
+    "generate_json_report": ".report_writer",
+    "generate_markdown_report": ".report_writer",
+    "write_reports": ".report_writer",
+}
+
+
+def __getattr__(name: str) -> Any:
+    """Load heavier evaluation modules only when their package export is used."""
+    module_name = _EXPORT_MODULES.get(name)
+    if module_name is None:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    value = getattr(import_module(module_name, __name__), name)
+    globals()[name] = value
+    return value
 
 

@@ -186,11 +186,13 @@ class EvaluationCLITests(unittest.TestCase):
             "--dataset", "path/to/dataset.json",
             "--output", "path/to/output",
             "--compare", "path/to/baseline.json",
+            "--offline-placeholder",
         ])
         self.assertEqual(args.video_id, "mcp_vs_api")
         self.assertEqual(args.dataset, "path/to/dataset.json")
         self.assertEqual(args.output, "path/to/output")
         self.assertEqual(args.compare, "path/to/baseline.json")
+        self.assertTrue(args.offline_placeholder)
 
     def test_run_evaluation_workflow(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -242,6 +244,7 @@ class EvaluationCLITests(unittest.TestCase):
             exit_code = main([
                 "--dataset", str(ds_path),
                 "--output", str(out_dir),
+                "--offline-placeholder",
             ])
 
             self.assertEqual(exit_code, 0)

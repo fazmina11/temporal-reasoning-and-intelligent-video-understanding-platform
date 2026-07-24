@@ -23,6 +23,49 @@ Video
 The next goal is to turn this working research-grade base into a stronger,
 more reliable, measurable, and user-friendly Memory Recovery AI platform.
 
+## Current Status After Latest Pull
+
+The latest pulled work adds the first evaluation and memory-recovery layer:
+
+```text
+data/evaluation/qa_sets/mcp_vs_api_qa.json
+src/pipeline/evaluation/
+src/pipeline/memory_recovery/
+src/pipeline/knowledge_reconstruction/
+```
+
+Implemented items:
+
+- A 60-question QA set for `mcp_vs_api`.
+- Dataset schema validation and dataset loading.
+- Dataset statistics generation.
+- Evaluation runner, metrics, JSON reports, Markdown reports, and regression comparison.
+- Baseline evaluation reports under `data/evaluation/reports/`.
+- Rule-based episodic memory parsing.
+- Memory candidate generation and ranking.
+- Memory retrieval integration inside the agentic retrieval orchestrator.
+- Knowledge dependency extraction and explanatory reconstruction scaffolding.
+- Unit tests for evaluation, memory recovery, and knowledge reconstruction.
+
+Important integration correction:
+
+- The evaluation CLI now defaults to the real in-process `/ask` pipeline.
+- Use `--offline-placeholder` only when intentionally generating a smoke-test
+  report without calling the real retrieval pipeline.
+
+Current baseline quality concerns from the committed evaluation reports:
+
+- Negative unrelated questions are still being answered as video-grounded answers
+  in the baseline report.
+- Ambiguous follow-up questions are still being answered instead of requesting
+  clarification in the baseline report.
+- Timestamp hit rate and citation validity need improvement.
+- Required-term coverage and unsupported-claim rate need focused tuning.
+
+That means the next work is not simply adding more features. The next work is
+using the evaluation harness to force retrieval, scope routing, citations, and
+answer quality to become measurably better.
+
 ## Main Next Focus
 
 The next focus should be:
@@ -37,14 +80,13 @@ can prove answer quality with tests, metrics, and clear debug traces.
 
 The recommended priority order is:
 
-1. Build a strong question-answer evaluation set.
-2. Add answer quality scoring and regression reports.
-3. Improve OCR, speaker, audio, and visual evidence quality.
-4. Add user-facing timeline citations and debug inspection.
-5. Add async processing jobs for longer videos.
-6. Add production-safe storage and index lifecycle management.
-7. Add advanced VLM clip understanding.
-8. Add semantic event segmentation and world-memory research features.
+1. Fix evaluation baseline failures in scope routing, ambiguity handling, timestamps, and citations.
+2. Improve OCR, speaker, audio, and visual evidence quality.
+3. Add user-facing timeline citations and debug inspection.
+4. Add async processing jobs for longer videos.
+5. Add production-safe storage and index lifecycle management.
+6. Add advanced VLM clip understanding.
+7. Add semantic event segmentation and world-memory research features.
 
 ## Why This Order Matters
 
@@ -65,6 +107,8 @@ the system must prove four things:
 That requires evaluation and observability first.
 
 ## Phase N1: Golden QA Evaluation Set
+
+Status: implemented for `mcp_vs_api`; expand later for more videos.
 
 ### Purpose
 
@@ -138,6 +182,9 @@ ambiguous_query
 
 ## Phase N2: Automated Retrieval And Answer Evaluation
 
+Status: implemented, with the CLI now connected to the real local ask pipeline
+by default.
+
 ### Purpose
 
 Create a repeatable command that runs the QA set against the `/ask` pipeline and
@@ -181,6 +228,12 @@ average_latency_ms
 
 ```powershell
 python -m src.pipeline.evaluation.evaluate_ask --video-id mcp_vs_api
+```
+
+Offline smoke-test mode:
+
+```powershell
+python -m src.pipeline.evaluation.evaluate_ask --video-id mcp_vs_api --offline-placeholder
 ```
 
 ### Done Criteria
@@ -812,24 +865,27 @@ The next sprint should be small and measurable.
 ### Sprint Goal
 
 ```text
-Create the evaluation harness and use it to measure current answer quality.
+Use the evaluation harness to improve real answer quality.
 ```
 
 ### Sprint Tasks
 
-1. Add `data/evaluation/qa_sets/mcp_vs_api_qa.json`.
-2. Add QA schema and loader.
-3. Add evaluation runner.
-4. Add metrics report writer.
-5. Run the evaluation against the current `mcp_vs_api` processed artifacts.
-6. Save the first baseline report.
-7. Fix the top three failure categories only after seeing the report.
+1. Run a fresh real-pipeline evaluation for `mcp_vs_api`.
+2. Fix unrelated-question abstention in strict video mode.
+3. Fix ambiguous follow-up handling when there is no usable conversation context.
+4. Improve timestamp selection so primary citations land inside expected windows.
+5. Improve citation validity by ensuring answer citations match verified evidence.
+6. Improve required-term coverage without allowing unsupported claims.
+7. Re-run evaluation and compare against the previous baseline report.
 
 ### Sprint Done Criteria
 
-- The team can run one command to evaluate the current system.
-- The report shows timestamp accuracy, citation validity, and abstention quality.
-- Future retrieval changes can be compared against this baseline.
+- Outcome accuracy improves over the current baseline.
+- Negative-question abstention is no longer 0%.
+- Ambiguous-query questions return `ambiguous_query` when context is missing.
+- Citation validity improves over the current baseline.
+- Timestamp hit rate improves over the current baseline.
+- Regression comparison report is generated after the fixes.
 
 ## Definition Of Next Milestone Done
 

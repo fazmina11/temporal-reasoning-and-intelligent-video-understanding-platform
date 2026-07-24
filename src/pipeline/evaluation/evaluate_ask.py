@@ -10,6 +10,7 @@ The module intentionally does not depend on FastAPI and remains reusable by othe
 from __future__ import annotations
 
 import argparse
+import asyncio
 import logging
 import sys
 from abc import ABC, abstractmethod
@@ -17,6 +18,7 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
+from threading import Thread
 from time import perf_counter_ns
 from typing import Any
 
@@ -37,7 +39,7 @@ class AskPipelineAdapter(ABC):
 
 
 class DefaultAskPipelineAdapter(AskPipelineAdapter):
-    """Default fallback adapter boundary for standalone evaluation runs."""
+    """Offline placeholder adapter for tests and dry-run report generation."""
 
     def __init__(self, ask_fn: Any | None = None) -> None:
         self._ask_fn = ask_fn
@@ -60,6 +62,16 @@ class DefaultAskPipelineAdapter(AskPipelineAdapter):
             ],
             "trace_id": "eval_trace_001",
         }
+
+
+class LocalAskPipelineAdapter(AskPipelineAdapter):
+    """Run evaluation against the project's in-process agentic ask pipeline."""
+
+    def ask(self, question: str, video_id: str) -> Any:
+        from api import QueryRequest, ask_question
+
+        request = QueryRequest(video_id=video_id, query=question)
+        return _run_async_sync(ask_question(request))
 
 
 @dataclass
@@ -222,7 +234,7 @@ def run_evaluation_workflow(
         )
 
     if adapter is None:
-        adapter = DefaultAskPipelineAdapter()
+        adapter = LocalAskPipelineAdapter()
 
     runner = EvaluationRunner(adapter=adapter)
     LOGGER.info("Executing dataset questions for video_id=%s...", dataset.video_id)
@@ -283,6 +295,14 @@ def build_arg_parser() -> argparse.ArgumentParser:
         default=None,
         help="Path to previous evaluation report JSON to compare against.",
     )
+    parser.add_argument(
+        "--offline-placeholder",
+        action="store_true",
+        help=(
+            "Use a deterministic placeholder adapter instead of the real local ask "
+            "pipeline. Intended for CLI smoke tests only."
+        ),
+    )
     return parser
 
 
@@ -300,11 +320,13 @@ def main(args: list[str] | None = None) -> int:
         parser.error("At least one of --video-id or --dataset must be provided.")
 
     try:
+        adapter = DefaultAskPipelineAdapter() if parsed_args.offline_placeholder else None
         run, metrics, (json_path, md_path), comp_paths = run_evaluation_workflow(
             video_id=parsed_args.video_id,
             dataset_path=parsed_args.dataset,
             output_dir=parsed_args.output,
             compare_path=parsed_args.compare,
+            adapter=adapter,
         )
         LOGGER.info("Report JSON written to: %s", json_path)
         LOGGER.info("Report Markdown written to: %s", md_path)
@@ -320,6 +342,29 @@ def main(args: list[str] | None = None) -> int:
 def _elapsed_ms(started_ns: int) -> float:
     """Calculate elapsed monotonic time in milliseconds."""
     return round((perf_counter_ns() - started_ns) / 1_000_000, 3)
+
+
+def _run_async_sync(awaitable: Any) -> Any:
+    """Run an async ask call from either plain sync code or an active event loop."""
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(awaitable)
+
+    result: dict[str, Any] = {}
+
+    def _runner() -> None:
+        try:
+            result["value"] = asyncio.run(awaitable)
+        except BaseException as exc:  # pragma: no cover - re-raised in caller thread
+            result["error"] = exc
+
+    thread = Thread(target=_runner, daemon=True)
+    thread.start()
+    thread.join()
+    if "error" in result:
+        raise result["error"]
+    return result.get("value")
 
 
 def _response_to_mapping(response: Any) -> Mapping[str, Any]:
