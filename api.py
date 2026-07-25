@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 import os
 
 os.environ.setdefault("USE_TF", "0")
@@ -8,16 +8,19 @@ os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
 os.environ.setdefault("HIERARCHY_EMBED_MODEL", "BAAI/bge-base-en-v1.5")
 
 import uuid
+import json
 import shutil
 import asyncio
 import logging
 import re
+from datetime import datetime, timezone
 from functools import partial
 from pathlib import Path
 from typing import List, Optional, Dict, Any
 from fastapi import FastAPI, UploadFile, File, BackgroundTasks, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 import sys
 from dotenv import load_dotenv
@@ -92,7 +95,14 @@ app = FastAPI(title="VideoSceneRAG API")
 # Enable CORS for all origins with credentials support
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "http://localhost:4173",
+        "http://127.0.0.1:4173",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -107,6 +117,107 @@ app.mount("/data", StaticFiles(directory="data"), name="data")
 
 # Global state to track processing status
 processing_status: Dict[str, Dict[str, Any]] = {}
+cancelled_video_ids: set[str] = set()
+
+
+def _manifest_status(manifest: dict[str, Any]) -> dict[str, Any]:
+    processing = manifest.get("processing", {})
+    return {
+        "status": processing.get("status", processing.get("processing_status", "processing")),
+        "progress": processing.get("progress", 0),
+        "phase": processing.get("current_phase", "queued"),
+        "filename": manifest.get("original_filename", manifest.get("source_filename", "video.mp4")),
+        "manifest_path": manifest.get("artifacts", {}).get("manifest_path"),
+        "source_sha256": manifest.get("source_sha256"),
+        "duration_ms": manifest.get("duration_ms", 0),
+        "duration_seconds": manifest.get("duration_seconds", 0),
+        "fps": manifest.get("fps"),
+        "frame_count": manifest.get("frame_count"),
+        "resolution": manifest.get("resolution"),
+        "video_codec": manifest.get("video_codec"),
+        "audio_codec": manifest.get("audio_codec"),
+        "audio_sample_rate": manifest.get("audio_sample_rate"),
+        "has_audio": manifest.get("has_audio"),
+        "timeline": manifest.get("timeline", {}),
+        "audio_path": manifest.get("audio_path"),
+        "pipeline_version": manifest.get("pipeline_version"),
+        "error": processing.get("error"),
+    }
+
+
+def _video_summaries() -> list[dict[str, Any]]:
+    summaries: dict[str, dict[str, Any]] = {}
+    for video_id, status_info in processing_status.items():
+        summaries[video_id] = {
+            "video_id": video_id,
+            "filename": status_info.get("filename", "video.mp4"),
+            "status": status_info.get("status", "processing"),
+            "progress": status_info.get("progress", 0),
+            "duration_seconds": status_info.get("duration_seconds", 0),
+            "resolution": status_info.get("resolution", "unknown"),
+        }
+
+    manifests_dir = REPO_ROOT / "data" / "processed" / "manifests"
+    if manifests_dir.is_dir():
+        for manifest_file in manifests_dir.glob("*.json"):
+            try:
+                manifest = read_json(manifest_file)
+                video_id = str(manifest.get("video_id") or manifest_file.stem)
+                if video_id not in summaries:
+                    status = _manifest_status(manifest)
+                    summaries[video_id] = {
+                        "video_id": video_id,
+                        "filename": status["filename"],
+                        "status": status["status"],
+                        "progress": status["progress"],
+                        "duration_seconds": status["duration_seconds"],
+                        "resolution": status["resolution"],
+                    }
+            except Exception as exc:
+                logger.warning("Skipping unreadable manifest %s: %s", manifest_file, exc)
+    return list(summaries.values())
+
+
+def _require_manifest(video_id: str) -> dict[str, Any]:
+    try:
+        return load_manifest(repo_root=REPO_ROOT, video_id=video_id)
+    except ManifestError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+def _check_cancelled(video_id: str) -> None:
+    if video_id in cancelled_video_ids:
+        raise RuntimeError("Processing was cancelled by the user.")
+
+
+def _trace_payloads(video_id: str) -> list[dict[str, Any]]:
+    trace_dir = REPO_ROOT / "data" / "processed" / "retrieval_traces" / video_id
+    if not trace_dir.is_dir():
+        return []
+    payloads: list[dict[str, Any]] = []
+    for path in sorted(trace_dir.glob("*.json"), key=lambda item: item.stat().st_mtime, reverse=True):
+        try:
+            payloads.append(read_json(path))
+        except Exception as exc:
+            logger.warning("Skipping unreadable trace %s: %s", path, exc)
+    return payloads
+
+
+def _find_evidence(value: Any, evidence_id: str) -> dict[str, Any] | None:
+    if isinstance(value, dict):
+        identifiers = {str(value.get(key)) for key in ("evidence_id", "id", "citation_id", "source_id") if value.get(key) is not None}
+        if evidence_id in identifiers:
+            return value
+        for child in value.values():
+            match = _find_evidence(child, evidence_id)
+            if match:
+                return match
+    elif isinstance(value, list):
+        for child in value:
+            match = _find_evidence(child, evidence_id)
+            if match:
+                return match
+    return None
 
 class QueryRequest(AskRequest):
     pass
@@ -202,12 +313,186 @@ async def get_status(video_id: str):
         raise HTTPException(status_code=404, detail="Video not found")
     return processing_status[video_id]
 
+@app.get("/videos")
+async def list_videos():
+    """List persisted manifests and in-flight processing jobs."""
+    return {"videos": _video_summaries()}
+
 @app.get("/manifest/{video_id}")
 async def get_manifest(video_id: str):
+    return _require_manifest(video_id)
+
+
+@app.get("/videos/{video_id}")
+async def get_video(video_id: str):
+    """Canonical video detail endpoint used by the frontend query layer."""
+    return _require_manifest(video_id)
+
+
+@app.delete("/videos/{video_id}")
+async def delete_video(video_id: str):
+    """Delete the source upload and derived artifacts for one known video id."""
+    manifest = _require_manifest(video_id)
+    allowed_roots = [REPO_ROOT / "data" / "uploads", REPO_ROOT / "data" / "processed"]
+    candidates = [Path(manifest.get("video_path", "")), Path(manifest.get("audio_path", ""))]
+    candidates.extend(Path(value) for value in manifest.get("artifacts", {}).values() if value)
+    for candidate in candidates:
+        try:
+            resolved = candidate.resolve()
+            if any(resolved.is_relative_to(root.resolve()) for root in allowed_roots) and resolved.is_file():
+                resolved.unlink()
+        except (OSError, ValueError):
+            logger.warning("Could not delete artifact %s", candidate)
+    processing_status.pop(video_id, None)
+    cancelled_video_ids.discard(video_id)
+    return {"video_id": video_id, "status": "deleted", "message": "Video and its derived artifacts were deleted."}
+
+
+@app.post("/videos/{video_id}/retry")
+async def retry_video(video_id: str, background_tasks: BackgroundTasks):
+    manifest = _require_manifest(video_id)
+    video_path = Path(manifest.get("video_path", ""))
+    if not video_path.is_file():
+        raise HTTPException(status_code=409, detail="The original uploaded video is unavailable for retry.")
+    cancelled_video_ids.discard(video_id)
+    status = _manifest_status(manifest)
+    status.update({"status": "queued", "progress": 0, "phase": "queued", "error": None})
+    processing_status[video_id] = status
+    update_manifest_status(repo_root=REPO_ROOT, video_id=video_id, status="processing", progress=0, current_phase="queued")
+    background_tasks.add_task(process_pipeline, video_id, str(video_path))
+    return {"video_id": video_id, "status": "queued", "message": "Video processing was queued again."}
+
+
+@app.post("/videos/{video_id}/cancel")
+async def cancel_video(video_id: str):
+    _require_manifest(video_id)
+    cancelled_video_ids.add(video_id)
+    status = processing_status.get(video_id)
+    progress = status.get("progress", 0) if status else 0
+    processing_status[video_id] = {
+        **(status or _manifest_status(_require_manifest(video_id))),
+        "status": "cancelled",
+        "progress": progress,
+        "phase": "cancelled",
+    }
+    update_manifest_status(repo_root=REPO_ROOT, video_id=video_id, status="failed", progress=progress, current_phase="cancelled", error="Cancelled by user")
+    return {"video_id": video_id, "status": "cancelled", "message": "Cancellation will take effect at the next pipeline checkpoint."}
+
+
+@app.get("/videos/{video_id}/transcript")
+async def get_video_transcript(video_id: str):
+    manifest = _require_manifest(video_id)
+    transcript_path = Path(manifest.get("artifacts", {}).get("transcript_path", ""))
+    if transcript_path.is_file():
+        return read_json(transcript_path)
+    return _get_manifest_artifact(video_id, "atoms_path")
+
+
+@app.get("/videos/{video_id}/timeline")
+async def get_video_timeline(video_id: str):
+    return _get_manifest_artifact(video_id, "events_path")
+
+
+@app.get("/videos/{video_id}/questions")
+async def get_video_questions(video_id: str):
+    _require_manifest(video_id)
+    questions = []
+    for trace in _trace_payloads(video_id):
+        response = trace.get("final_response", {})
+        if response:
+            questions.append({**response, "created_at": trace.get("created_at")})
+    return {"questions": questions}
+
+
+@app.post("/videos/{video_id}/questions")
+async def create_video_question(video_id: str, request: VideoQuestionRequest):
+    _require_manifest(video_id)
+    payload = request.model_dump(exclude_none=True) if hasattr(request, "model_dump") else request.dict(exclude_none=True)
+    return await ask_question(QueryRequest(video_id=video_id, **payload))
+
+
+@app.get("/videos/{video_id}/evidence/{evidence_id}")
+async def get_video_evidence(video_id: str, evidence_id: str):
+    manifest = _require_manifest(video_id)
+    for artifact_path in manifest.get("artifacts", {}).values():
+        path = Path(artifact_path)
+        if path.is_file() and path.suffix == ".json":
+            evidence = _find_evidence(read_json(path), evidence_id)
+            if evidence:
+                return evidence
+    for trace in _trace_payloads(video_id):
+        evidence = _find_evidence(trace, evidence_id)
+        if evidence:
+            return evidence
+    raise HTTPException(status_code=404, detail="Evidence was not found for this video.")
+
+
+@app.get("/videos/{video_id}/traces/{trace_id}")
+async def get_video_trace(video_id: str, trace_id: str):
+    _require_manifest(video_id)
     try:
-        return load_manifest(repo_root=REPO_ROOT, video_id=video_id)
-    except ManifestError as e:
-        raise HTTPException(status_code=404, detail=str(e)) from e
+        return model_to_dict(TraceRepository(REPO_ROOT).load(video_id, trace_id))
+    except (FileNotFoundError, ValueError) as exc:
+        raise HTTPException(status_code=404, detail="Trace not found") from exc
+
+
+@app.get("/videos/{video_id}/progress/stream")
+async def stream_processing_status(video_id: str):
+    _require_manifest(video_id)
+
+    async def events():
+        previous: str | None = None
+        while True:
+            payload = await get_status(video_id)
+            encoded = json.dumps(payload)
+            if encoded != previous:
+                yield f"event: status\\ndata: {encoded}\\n\\n"
+                previous = encoded
+            if payload.get("status") in {"completed", "failed", "cancelled"}:
+                yield "event: complete\\ndata: {}\\n\\n"
+                break
+            await asyncio.sleep(1)
+
+    return StreamingResponse(events(), media_type="text/event-stream", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+@app.get("/health/live")
+async def health_live():
+    return {"status": "ok", "service": "VideoSceneRAG API", "timestamp": datetime.now(timezone.utc).isoformat()}
+
+
+@app.get("/health/ready")
+async def health_ready():
+    required = [REPO_ROOT / "data", REPO_ROOT / "data" / "processed", REPO_ROOT / "data" / "uploads"]
+    missing = [str(path.relative_to(REPO_ROOT)) for path in required if not path.exists()]
+    if missing:
+        raise HTTPException(status_code=503, detail={"status": "degraded", "missing": missing})
+    return {"status": "ok", "service": "VideoSceneRAG API", "timestamp": datetime.now(timezone.utc).isoformat(), "details": {"processing_jobs": len(processing_status)}}
+
+
+@app.get("/analytics/overview")
+async def analytics_overview():
+    videos = _video_summaries()
+    total_storage_bytes = 0
+    for summary in videos:
+        try:
+            manifest = _require_manifest(summary["video_id"])
+            video_path = Path(manifest.get("video_path", ""))
+            total_storage_bytes += video_path.stat().st_size if video_path.is_file() else 0
+        except HTTPException:
+            continue
+    statuses = [str(video.get("status", "")).lower() for video in videos]
+    question_count = sum(len(_trace_payloads(str(video["video_id"]))) for video in videos)
+    return {
+        "total_videos": len(videos),
+        "ready_videos": sum(status == "completed" for status in statuses),
+        "processing_videos": sum(status not in {"completed", "failed", "cancelled"} for status in statuses),
+        "failed_videos": sum(status in {"failed", "cancelled"} for status in statuses),
+        "total_duration_seconds": sum(float(video.get("duration_seconds") or 0) for video in videos),
+        "total_storage_bytes": total_storage_bytes,
+        "questions_asked": question_count,
+        "videos": videos,
+    }
 
 def _get_manifest_artifact(video_id: str, artifact_key: str):
     try:
@@ -275,6 +560,7 @@ async def process_pipeline(video_id: str, video_path: str):
         loop = asyncio.get_event_loop()
         await loop.run_in_executor(None, phase1_process, video_path)
 
+        _check_cancelled(video_id)
         # Produce a video-scoped transcript for sentence and pause boundaries.
         manifest = load_manifest(repo_root=REPO_ROOT, video_id=video_id)
         if manifest.get("has_audio") is not False:
@@ -315,6 +601,7 @@ async def process_pipeline(video_id: str, video_path: str):
                 ),
             )
 
+        _check_cancelled(video_id)
         # Phases C3-C5: boundary evidence, canonical atoms, then validation.
         processing_status[video_id]["status"] = "Canonical timeline chunking"
         processing_status[video_id]["progress"] = 55
@@ -342,6 +629,7 @@ async def process_pipeline(video_id: str, video_path: str):
         )
         processing_status[video_id]["atom_validation_passed"] = True
 
+        _check_cancelled(video_id)
         # Extract clear frame evidence across every canonical atom.
         processing_status[video_id]["status"] = "Frame evidence extraction"
         processing_status[video_id]["progress"] = 70
@@ -370,6 +658,7 @@ async def process_pipeline(video_id: str, video_path: str):
         )
         processing_status[video_id]["frame_validation_passed"] = True
 
+        _check_cancelled(video_id)
         # Phases C6-C9: transcript, visual evidence, semantic chunks, validation.
         processing_status[video_id]["status"] = "Evidence foundation and semantic chunks"
         processing_status[video_id]["progress"] = 78
@@ -396,6 +685,7 @@ async def process_pipeline(video_id: str, video_path: str):
         )
         processing_status[video_id]["chunk_validation_passed"] = True
 
+        _check_cancelled(video_id)
         # Phases C10-C11: events and hierarchy-native Chroma indexing.
         processing_status[video_id]["status"] = "Events and hierarchy index"
         processing_status[video_id]["progress"] = 84
@@ -471,6 +761,7 @@ async def process_pipeline(video_id: str, video_path: str):
             registry_result.get("registry_path")
         )
         
+        _check_cancelled(video_id)
         # Phase 2: Visual Enrichment
         processing_status[video_id]["status"] = "Phase 2: Visual Analysis (Gemini)"
         processing_status[video_id]["progress"] = 92
@@ -484,6 +775,7 @@ async def process_pipeline(video_id: str, video_path: str):
         )
         await loop.run_in_executor(None, phase2_enrich)
         
+        _check_cancelled(video_id)
         # Phase 3: Indexing
         processing_status[video_id]["status"] = "Phase 3: Building Vector Index"
         processing_status[video_id]["progress"] = 96
@@ -510,6 +802,15 @@ async def process_pipeline(video_id: str, video_path: str):
         logger.info(f"Successfully processed video {video_id}")
         
     except Exception as e:
+        if video_id in cancelled_video_ids:
+            processing_status[video_id]["status"] = "cancelled"
+            processing_status[video_id]["phase"] = "cancelled"
+            processing_status[video_id]["error"] = "Cancelled by user"
+            try:
+                update_manifest_status(repo_root=REPO_ROOT, video_id=video_id, status="failed", progress=processing_status[video_id].get("progress", 0), current_phase="cancelled", error="Cancelled by user")
+            except ManifestError:
+                logger.warning("Could not update cancelled manifest for %s", video_id)
+            return
         processing_status[video_id]["status"] = "failed"
         processing_status[video_id]["phase"] = "failed"
         processing_status[video_id]["error"] = str(e)
@@ -1169,3 +1470,9 @@ async def ask_question_debug(request: QueryRequest):
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=int(os.getenv("PORT", "8001")))
+
+
+
+
+
+

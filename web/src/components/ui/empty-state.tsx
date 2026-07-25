@@ -1,0 +1,3 @@
+﻿import { Inbox } from "lucide-react";
+import { Button } from "@/components/ui/button";
+export function EmptyState({ title = "Nothing here yet", description, action }: { title?: string; description?: string; action?: { label: string; onClick: () => void } }) { return <div className="flex min-h-48 flex-col items-center justify-center gap-3 rounded-xl border border-dashed p-8 text-center"><div className="grid h-10 w-10 place-items-center rounded-lg bg-muted text-muted-foreground"><Inbox className="h-5 w-5" /></div><div><h3 className="text-sm font-semibold">{title}</h3>{description && <p className="mt-1 max-w-sm text-sm text-muted-foreground">{description}</p>}</div>{action && <Button variant="outline" size="sm" onClick={action.onClick}>{action.label}</Button>}</div>; }
