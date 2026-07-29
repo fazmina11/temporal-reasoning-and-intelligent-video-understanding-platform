@@ -1,6 +1,7 @@
 ﻿import { useState, useMemo, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
+import type { ComponentType } from "react";
 import {
   Search,
   Filter,
@@ -29,7 +30,7 @@ import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-import { type TranscriptBlock, MOCK_TRANSCRIPT_BLOCKS } from "./mock-transcript-data";
+import type { TranscriptBlock } from "@/types/api";
 
 // ----------------------------------------------------
 // 1. SpeakerBadge Component
@@ -592,11 +593,11 @@ export function SearchStats({
 // 10. TranscriptExplorer Component (Main Orchestrator)
 // ----------------------------------------------------
 interface TranscriptExplorerProps {
+  blocks?: TranscriptBlock[];
   onSeekToTimestamp?: (sec: number) => void;
 }
 
-export function TranscriptExplorer({ onSeekToTimestamp }: TranscriptExplorerProps) {
-  const [blocks] = useState<TranscriptBlock[]>(MOCK_TRANSCRIPT_BLOCKS);
+export function TranscriptExplorer({ blocks = [], onSeekToTimestamp }: TranscriptExplorerProps) {
   const [query, setQuery] = useState("");
   const [selectedSpeaker, setSelectedSpeaker] = useState("all");
   const [hasOcrOnly, setHasOcrOnly] = useState(false);
@@ -698,8 +699,8 @@ export function TranscriptExplorer({ onSeekToTimestamp }: TranscriptExplorerProp
       <SearchStats
         totalFound={filteredBlocks.length}
         avgConfidence={avgConfidence}
-        speakerCount={2}
-        timelineCoveragePct={84}
+        speakerCount={new Set(blocks.map((block) => block.speakerId)).size}
+        timelineCoveragePct={blocks.length > 0 ? 100 : 0}
       />
     </div>
   );

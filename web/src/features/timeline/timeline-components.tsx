@@ -19,7 +19,8 @@ import {
   Clock,
   Compass,
   Layers3,
-  Bookmark
+  Bookmark,
+  Volume2
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -28,11 +29,8 @@ import { cn } from "@/lib/utils";
 import {
   type TimelineMarkerData,
   type TimelineTrackData,
-  type OverviewChapter,
-  OVERVIEW_CHAPTERS,
-  INITIAL_TIMELINE_TRACKS,
-  TOTAL_DURATION_SEC
-} from "./mock-timeline-data";
+  type OverviewChapter
+} from "@/types/api";
 
 // Helper icon mapper
 const ICON_MAP: Record<string, ComponentType<any>> = {
@@ -42,7 +40,8 @@ const ICON_MAP: Record<string, ComponentType<any>> = {
   Mic,
   ShieldCheck,
   Database,
-  Sparkles
+  Sparkles,
+  Volume2
 };
 
 // ----------------------------------------------------
@@ -103,23 +102,24 @@ export function ZoomControls({ zoom, onZoomIn, onZoomOut, onResetZoom }: ZoomCon
 interface OverviewStripProps {
   chapters: OverviewChapter[];
   currentSec: number;
+  durationSec: number;
   onSeek: (sec: number) => void;
 }
 
-export function OverviewStrip({ chapters, currentSec, onSeek }: OverviewStripProps) {
+export function OverviewStrip({ chapters, currentSec, durationSec, onSeek }: OverviewStripProps) {
   return (
     <div className="space-y-1.5 bg-slate-950 p-2.5 border-b border-slate-800 shrink-0">
       <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-slate-400">
         <span className="flex items-center gap-1.5 text-indigo-400">
           <Compass className="h-3.5 w-3.5" /> AI Chapter Breakdown & Density Strip
         </span>
-        <span className="font-mono text-slate-400">42:18 Total Span</span>
+        <span className="font-mono text-slate-400">{formatTimelineTime(durationSec)} Total Span</span>
       </div>
 
       {/* Chapters Strip Grid */}
       <div className="relative h-6 w-full rounded-md overflow-hidden bg-slate-900 border border-slate-800 flex items-center cursor-pointer">
         {chapters.map((ch) => {
-          const widthPct = ((ch.endSec - ch.startSec) / TOTAL_DURATION_SEC) * 100;
+          const widthPct = ((ch.endSec - ch.startSec) / Math.max(durationSec, 1)) * 100;
           return (
             <div
               key={ch.id}
@@ -140,7 +140,7 @@ export function OverviewStrip({ chapters, currentSec, onSeek }: OverviewStripPro
 
         {/* Current Playhead Needle Marker */}
         <div
-          style={{ left: `${(currentSec / TOTAL_DURATION_SEC) * 100}%` }}
+          style={{ left: `${(currentSec / Math.max(durationSec, 1)) * 100}%` }}
           className="absolute top-0 bottom-0 w-0.5 bg-cyan-400 z-10 shadow-[0_0_8px_rgba(34,211,238,0.8)] pointer-events-none"
         />
       </div>
@@ -153,15 +153,16 @@ export function OverviewStrip({ chapters, currentSec, onSeek }: OverviewStripPro
 // ----------------------------------------------------
 interface MiniMapProps {
   currentSec: number;
+  durationSec: number;
   onSeek: (sec: number) => void;
 }
 
-export function MiniMap({ currentSec, onSeek }: MiniMapProps) {
+export function MiniMap({ currentSec, durationSec, onSeek }: MiniMapProps) {
   const handleClick = (e: React.MouseEvent<HTMLDivElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
     const clickX = e.clientX - rect.left;
     const pct = Math.max(0, Math.min(1, clickX / rect.width));
-    onSeek(Math.floor(pct * TOTAL_DURATION_SEC));
+    onSeek(Math.floor(pct * durationSec));
   };
 
   return (
@@ -175,7 +176,7 @@ export function MiniMap({ currentSec, onSeek }: MiniMapProps) {
 
       {/* Playhead Marker */}
       <div
-        style={{ left: `${(currentSec / TOTAL_DURATION_SEC) * 100}%` }}
+        style={{ left: `${(currentSec / Math.max(durationSec, 1)) * 100}%` }}
         className="absolute top-0 bottom-0 w-1 bg-cyan-400 z-10 shadow-[0_0_6px_rgba(34,211,238,1)]"
       />
     </div>
@@ -287,13 +288,14 @@ export function HoverPreview({ marker, position }: HoverPreviewProps) {
 interface TimelineMarkerProps {
   marker: TimelineMarkerData;
   zoom: number;
+  durationSec: number;
   onHover: (marker: TimelineMarkerData | null, pos?: { x: number; y: number }) => void;
   onSelect: (marker: TimelineMarkerData) => void;
 }
 
-export function TimelineMarker({ marker, zoom, onHover, onSelect }: TimelineMarkerProps) {
-  const leftPct = (marker.startSec / TOTAL_DURATION_SEC) * 100;
-  const widthPct = Math.max(0.8, ((marker.endSec - marker.startSec) / TOTAL_DURATION_SEC) * 100);
+export function TimelineMarker({ marker, zoom, durationSec, onHover, onSelect }: TimelineMarkerProps) {
+  const leftPct = (marker.startSec / Math.max(durationSec, 1)) * 100;
+  const widthPct = Math.max(0.8, ((marker.endSec - marker.startSec) / Math.max(durationSec, 1)) * 100);
 
   const handleMouseEnter = (e: React.MouseEvent<HTMLDivElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
@@ -326,6 +328,7 @@ export function TimelineMarker({ marker, zoom, onHover, onSelect }: TimelineMark
 interface TimelineTrackProps {
   track: TimelineTrackData;
   zoom: number;
+  durationSec: number;
   onToggleExpand: (id: string) => void;
   onToggleVisible: (id: string) => void;
   onHoverMarker: (marker: TimelineMarkerData | null, pos?: { x: number; y: number }) => void;
@@ -335,6 +338,7 @@ interface TimelineTrackProps {
 export function TimelineTrack({
   track,
   zoom,
+  durationSec,
   onToggleExpand,
   onToggleVisible,
   onHoverMarker,
@@ -356,6 +360,7 @@ export function TimelineTrack({
             key={m.id}
             marker={m}
             zoom={zoom}
+            durationSec={durationSec}
             onHover={onHoverMarker}
             onSelect={onSelectMarker}
           />
@@ -369,15 +374,32 @@ export function TimelineTrack({
 // 8. Timeline Component (Main Orchestrator)
 // ----------------------------------------------------
 interface TimelineProps {
+  tracks?: TimelineTrackData[];
+  chapters?: OverviewChapter[];
+  durationSec?: number;
+  playheadSec?: number;
   onSeekToTimestamp?: (sec: number) => void;
 }
 
-export function Timeline({ onSeekToTimestamp }: TimelineProps) {
-  const [tracks, setTracks] = useState<TimelineTrackData[]>(INITIAL_TIMELINE_TRACKS);
+function formatTimelineTime(seconds: number) {
+  const safe = Math.max(0, Math.floor(seconds));
+  const hours = Math.floor(safe / 3600);
+  const minutes = Math.floor((safe % 3600) / 60);
+  const secs = safe % 60;
+  return hours > 0
+    ? `${hours}:${String(minutes).padStart(2, "0")}:${String(secs).padStart(2, "0")}`
+    : `${minutes}:${String(secs).padStart(2, "0")}`;
+}
+
+export function Timeline({ tracks: sourceTracks = [], chapters = [], durationSec = 1, playheadSec = 0, onSeekToTimestamp }: TimelineProps) {
+  const [tracks, setTracks] = useState<TimelineTrackData[]>(sourceTracks);
   const [zoom, setZoom] = useState(100);
-  const [currentSec, setCurrentSec] = useState(312); // 05:12
+  const [currentSec, setCurrentSec] = useState(playheadSec);
   const [hoveredMarker, setHoveredMarker] = useState<TimelineMarkerData | null>(null);
   const [hoverPos, setHoverPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+
+  useEffect(() => setTracks(sourceTracks), [sourceTracks]);
+  useEffect(() => setCurrentSec(playheadSec), [playheadSec]);
 
   const handleZoomIn = () => setZoom((prev) => Math.min(400, prev + 50));
   const handleZoomOut = () => setZoom((prev) => Math.max(50, prev - 50));
@@ -404,7 +426,8 @@ export function Timeline({ onSeekToTimestamp }: TimelineProps) {
     handleSeek(marker.startSec);
   };
 
-  const timeRulerTicks = [0, 300, 600, 900, 1200, 1500, 1800, 2100, 2400];
+  const tickStep = Math.max(1, durationSec / 8);
+  const timeRulerTicks = Array.from({ length: 9 }, (_, index) => Math.min(durationSec, index * tickStep));
 
   return (
     <div className="relative flex h-full w-full flex-col overflow-hidden bg-slate-950 text-slate-100 text-left select-none">
@@ -429,7 +452,7 @@ export function Timeline({ onSeekToTimestamp }: TimelineProps) {
       </div>
 
       {/* Overview Chapters Strip */}
-      <OverviewStrip chapters={OVERVIEW_CHAPTERS} currentSec={currentSec} onSeek={handleSeek} />
+      <OverviewStrip chapters={chapters} currentSec={currentSec} durationSec={durationSec} onSeek={handleSeek} />
 
       {/* Main Track View Area */}
       <div className="flex-1 overflow-y-auto relative z-10 space-y-0.5">
@@ -440,8 +463,7 @@ export function Timeline({ onSeekToTimestamp }: TimelineProps) {
           </div>
           <div className="flex-1 relative h-6 overflow-hidden flex items-center">
             {timeRulerTicks.map((tSec) => {
-              const leftPct = (tSec / TOTAL_DURATION_SEC) * 100;
-              const mins = Math.floor(tSec / 60);
+              const leftPct = (tSec / Math.max(durationSec, 1)) * 100;
               return (
                 <div
                   key={tSec}
@@ -449,7 +471,7 @@ export function Timeline({ onSeekToTimestamp }: TimelineProps) {
                   className="absolute flex flex-col items-start font-mono text-[9px] text-slate-400"
                 >
                   <span className="h-2 w-px bg-slate-700 mb-0.5" />
-                  <span>{mins.toString().padStart(2, "0")}:00</span>
+                  <span>{formatTimelineTime(tSec)}</span>
                 </div>
               );
             })}
@@ -462,6 +484,7 @@ export function Timeline({ onSeekToTimestamp }: TimelineProps) {
             key={t.id}
             track={t}
             zoom={zoom}
+            durationSec={durationSec}
             onToggleExpand={handleToggleExpand}
             onToggleVisible={handleToggleVisible}
             onHoverMarker={(m, pos) => {
@@ -474,7 +497,7 @@ export function Timeline({ onSeekToTimestamp }: TimelineProps) {
       </div>
 
       {/* MiniMap Overview Slider at Bottom */}
-      <MiniMap currentSec={currentSec} onSeek={handleSeek} />
+      <MiniMap currentSec={currentSec} durationSec={durationSec} onSeek={handleSeek} />
 
       {/* Hover Preview Floating Popover */}
       <AnimatePresence>

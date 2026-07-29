@@ -248,7 +248,7 @@ export function ProcessingTimeline({ milestones }: ProcessingTimelineProps) {
 export interface LogMessage {
   time: string;
   module: string;
-  level: "INFO" | "WARN" | "SUCCESS" | "DEBUG";
+  level: "INFO" | "WARN" | "SUCCESS" | "DEBUG" | "ERROR";
   text: string;
 }
 
@@ -268,7 +268,8 @@ export function ActivityLog({ logs }: ActivityLogProps) {
     INFO: "text-blue-400",
     WARN: "text-amber-400 font-semibold",
     SUCCESS: "text-emerald-400 font-bold",
-    DEBUG: "text-slate-500"
+    DEBUG: "text-slate-500",
+    ERROR: "text-rose-400 font-semibold"
   };
 
   return (

@@ -14,7 +14,7 @@ export async function getTimeline(videoId: string) {
 }
 
 export async function getOCR(videoId: string) {
-  return apiGet<ApiArtifactDocument>(`/visual-artifacts/${videoId}`);
+  return apiGet<ApiArtifactDocument>(`/ocr/${videoId}`);
 }
 
 export async function getScenes(videoId: string) {
@@ -31,4 +31,21 @@ export async function getFrames(videoId: string) {
 
 export async function getChunkValidation(videoId: string) {
   return apiGet<ApiArtifactDocument>(`/chunk-validation/${videoId}`);
+}
+
+export async function getVisualArtifacts(videoId: string) {
+  return apiGet<ApiArtifactDocument>(`/visual-artifacts/${videoId}`);
+}
+
+export async function getSpeakers(videoId: string) {
+  return apiGet<ApiArtifactDocument>(`/speakers/${videoId}`);
+}
+
+export async function getAudioEvents(videoId: string) {
+  return apiGet<ApiArtifactDocument>(`/audio-events/${videoId}`);
+}
+
+export function getVideoMediaUrl(videoId: string) {
+  const baseUrl = (import.meta.env.VITE_API_URL || "http://localhost:8001").replace(/\/+$/, "");
+  return `${baseUrl}/videos/${encodeURIComponent(videoId)}/media`;
 }

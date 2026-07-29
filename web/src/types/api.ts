@@ -339,7 +339,7 @@ export interface TranscriptBlock {
 
 export interface TimelineMarkerData {
   id: string;
-  trackId: "scenes" | "transcript" | "ocr" | "speakers" | "citations" | "topics" | "events";
+  trackId: "scenes" | "transcript" | "ocr" | "speakers" | "audio" | "citations" | "topics" | "events";
   startSec: number;
   endSec: number;
   timeLabel: string;
@@ -354,7 +354,7 @@ export interface TimelineMarkerData {
 }
 
 export interface TimelineTrackData {
-  id: "scenes" | "transcript" | "ocr" | "speakers" | "citations" | "topics" | "events";
+  id: "scenes" | "transcript" | "ocr" | "speakers" | "audio" | "citations" | "topics" | "events";
   label: string;
   iconName: string;
   color: string;
@@ -407,9 +407,66 @@ export interface EvidenceItem {
   speaker?: string;
   explanation: string;
   frameGradient: string;
+  frameUri?: string;
+  sourceId?: string;
+  parentEventId?: string;
 }
 
-export type VideoStatus = LibraryVideo["status"] | "Ready"
+export type VideoStatus = LibraryVideo["status"];
+
+export interface OcrEvidenceView {
+  id: string;
+  text: string;
+  startSec: number;
+  endSec: number;
+  timestamp: string;
+  confidence: number;
+  qualityScore: number;
+  frameId?: string;
+  frameUri?: string;
+  parentChunkId?: string;
+  parentEventId?: string;
+}
+
+export interface VideoDetailScene {
+  id: string;
+  index: number;
+  timeStart: string;
+  timeEnd: string;
+  title: string;
+  description: string;
+  gradient: string;
+  startSec: number;
+}
+
+export interface VideoDetailView {
+  summary: string;
+  topics: string[];
+  visibleTexts: string[];
+  stats: {
+    events: number;
+    frames: number;
+    ocrRecords: number;
+    transcriptSpans: number;
+    speakers: number;
+    audioEvents: number;
+    semanticChunks: number;
+  };
+  scenes: VideoDetailScene[];
+  validationPassed: boolean | null;
+}
+
+export interface WorkspaceViewModel {
+  durationSec: number;
+  chapters: OverviewChapter[];
+  tracks: TimelineTrackData[];
+  transcriptBlocks: TranscriptBlock[];
+  ocrEvidence: OcrEvidenceView[];
+  evidenceItems: EvidenceItem[];
+  graphNodes: GraphNode[];
+  graphEdges: GraphEdge[];
+  details: VideoDetailView;
+}
 
 
 

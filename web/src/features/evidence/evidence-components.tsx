@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
 import {
@@ -26,15 +26,13 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import {
-  type EvidenceQuality,
-  type NodeType,
   type GraphNode,
   type GraphEdge,
-  type EvidenceItem,
-  MOCK_GRAPH_NODES,
-  MOCK_GRAPH_EDGES,
-  MOCK_EVIDENCE_ITEMS
-} from "./mock-evidence-data";
+  type EvidenceItem
+} from "@/types/api";
+
+type EvidenceQuality = EvidenceItem["quality"];
+type NodeType = GraphNode["type"];
 
 // Icon Map Helper
 const NODE_ICON_MAP: Record<string, any> = {
@@ -385,10 +383,11 @@ export function EvidencePanel({ item, onSeekToTimestamp }: EvidencePanelProps) {
 interface EvidenceTimelineProps {
   items: EvidenceItem[];
   selectedId: string;
+  durationSec: number;
   onSelect: (item: EvidenceItem) => void;
 }
 
-export function EvidenceTimeline({ items, selectedId, onSelect }: EvidenceTimelineProps) {
+export function EvidenceTimeline({ items, selectedId, durationSec, onSelect }: EvidenceTimelineProps) {
   return (
     <div className="h-12 border-t border-slate-800 bg-slate-950 px-4 py-2 flex items-center gap-3 shrink-0 text-xs text-left overflow-x-auto">
       <span className="text-[10px] font-bold font-mono text-slate-400 uppercase tracking-wider shrink-0">
@@ -397,7 +396,7 @@ export function EvidenceTimeline({ items, selectedId, onSelect }: EvidenceTimeli
       <div className="flex-1 relative h-6 bg-slate-900 border border-slate-800 rounded-md flex items-center px-2">
         {items.map((it) => {
           const isSelected = it.id === selectedId;
-          const leftPct = (it.startSec / 2538) * 100;
+          const leftPct = (it.startSec / Math.max(durationSec, 1)) * 100;
           return (
             <button
               key={it.id}
@@ -425,13 +424,22 @@ export function EvidenceTimeline({ items, selectedId, onSelect }: EvidenceTimeli
 // 10. EvidenceInspector Component (Main Orchestrator)
 // ----------------------------------------------------
 interface EvidenceInspectorProps {
+  items?: EvidenceItem[];
+  nodes?: GraphNode[];
+  edges?: GraphEdge[];
+  durationSec?: number;
   onSeekToTimestamp?: (sec: number) => void;
 }
 
-export function EvidenceInspector({ onSeekToTimestamp }: EvidenceInspectorProps) {
-  const [evidenceItems] = useState<EvidenceItem[]>(MOCK_EVIDENCE_ITEMS);
-  const [selectedItem, setSelectedItem] = useState<EvidenceItem>(MOCK_EVIDENCE_ITEMS[0]);
-  const [selectedNodeId, setSelectedNodeId] = useState<string>(MOCK_EVIDENCE_ITEMS[0].nodeId);
+export function EvidenceInspector({ items = [], nodes = [], edges = [], durationSec = 1, onSeekToTimestamp }: EvidenceInspectorProps) {
+  const evidenceItems = items;
+  const [selectedItem, setSelectedItem] = useState<EvidenceItem | null>(items[0] ?? null);
+  const [selectedNodeId, setSelectedNodeId] = useState<string>(items[0]?.nodeId ?? "video_root");
+
+  useEffect(() => {
+    setSelectedItem(items[0] ?? null);
+    setSelectedNodeId(items[0]?.nodeId ?? "video_root");
+  }, [items]);
 
   const handleSelectEvidence = (item: EvidenceItem) => {
     setSelectedItem(item);
@@ -444,6 +452,14 @@ export function EvidenceInspector({ onSeekToTimestamp }: EvidenceInspectorProps)
     if (match) setSelectedItem(match);
   };
 
+  if (!selectedItem) {
+    return (
+      <div className="grid h-full place-items-center bg-slate-950 p-6 text-center text-sm text-slate-400">
+        Evidence artifacts are not available yet.
+      </div>
+    );
+  }
+
   return (
     <div className="relative flex h-full w-full flex-col overflow-hidden bg-slate-950 text-slate-100 select-none">
       {/* Main 3-Column Center Area */}
@@ -455,7 +471,7 @@ export function EvidenceInspector({ onSeekToTimestamp }: EvidenceInspectorProps)
               <ShieldCheck className="h-4 w-4 text-emerald-400" /> Grounded Evidence
             </span>
             <Badge variant="outline" className="text-[10px] font-mono text-cyan-400 border-cyan-500/30">
-              3 Anchors
+              {evidenceItems.length} Sources
             </Badge>
           </div>
 
@@ -474,8 +490,8 @@ export function EvidenceInspector({ onSeekToTimestamp }: EvidenceInspectorProps)
         {/* Center Column: Interactive Knowledge Graph */}
         <div className="flex-1 relative overflow-hidden">
           <KnowledgeGraph
-            nodes={MOCK_GRAPH_NODES}
-            edges={MOCK_GRAPH_EDGES}
+            nodes={nodes}
+            edges={edges}
             selectedNodeId={selectedNodeId}
             onSelectNode={handleSelectNode}
           />
@@ -491,6 +507,7 @@ export function EvidenceInspector({ onSeekToTimestamp }: EvidenceInspectorProps)
       <EvidenceTimeline
         items={evidenceItems}
         selectedId={selectedItem.id}
+        durationSec={durationSec}
         onSelect={handleSelectEvidence}
       />
     </div>

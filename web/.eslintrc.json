@@ -1,6 +1,29 @@
 {
+  "root": true,
+  "env": {
+    "browser": true,
+    "es2022": true
+  },
   "extends": [
-    "next/core-web-vitals",
-    "next/typescript"
-  ]
+    "eslint:recommended"
+  ],
+  "parser": "@typescript-eslint/parser",
+  "plugins": [
+    "@typescript-eslint"
+  ],
+  "ignorePatterns": [
+    "dist",
+    "node_modules"
+  ],
+  "parserOptions": {
+    "ecmaVersion": "latest",
+    "ecmaFeatures": {
+      "jsx": true
+    },
+    "sourceType": "module"
+  },
+  "rules": {
+    "no-undef": "off",
+    "no-unused-vars": "off"
+  }
 }

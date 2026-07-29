@@ -12,6 +12,7 @@ import json
 import shutil
 import asyncio
 import logging
+import mimetypes
 import re
 from datetime import datetime, timezone
 from functools import partial
@@ -20,8 +21,8 @@ from typing import List, Optional, Dict, Any
 from fastapi import FastAPI, UploadFile, File, BackgroundTasks, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
+from fastapi.responses import FileResponse, StreamingResponse
+from pydantic import BaseModel, Field
 import sys
 from dotenv import load_dotenv
 
@@ -61,6 +62,7 @@ from src.pipeline.json_artifacts import read_json
 from src.pipeline.media_assets import extract_normalized_audio
 from src.pipeline.modality_foundation import run_modality_foundation
 from src.pipeline.agentic.contracts import (
+    AnswerMode,
     AnswerQuality,
     AskRequest,
     AskResponse,
@@ -113,7 +115,7 @@ UPLOAD_DIR = REPO_ROOT / "data" / "uploads"
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 # Mount data directory for serving processed frames/metadata if needed
-app.mount("/data", StaticFiles(directory="data"), name="data")
+app.mount("/data", StaticFiles(directory=REPO_ROOT / "data"), name="data")
 
 # Global state to track processing status
 processing_status: Dict[str, Dict[str, Any]] = {}
@@ -226,6 +228,13 @@ class QueryRequest(AskRequest):
 class QueryResponse(AskResponse):
     pass
 
+
+class VideoQuestionRequest(BaseModel):
+    query: str = Field(..., min_length=1)
+    answer_mode: AnswerMode = AnswerMode.STRICT_VIDEO
+    conversation_context: list[dict[str, Any]] = Field(default_factory=list)
+    request_id: str | None = None
+
 @app.post("/upload")
 async def upload_video(background_tasks: BackgroundTasks, file: UploadFile = File(...)):
     video_id = str(uuid.uuid4())
@@ -327,6 +336,40 @@ async def get_manifest(video_id: str):
 async def get_video(video_id: str):
     """Canonical video detail endpoint used by the frontend query layer."""
     return _require_manifest(video_id)
+
+
+@app.get("/videos/{video_id}/media", response_class=FileResponse)
+async def get_video_media(video_id: str):
+    """Serve the manifest-owned source video with HTTP byte-range support."""
+    manifest = _require_manifest(video_id)
+    source_value = manifest.get("video_path") or manifest.get("source_path")
+    if not source_value:
+        raise HTTPException(status_code=404, detail="The source video is unavailable.")
+
+    try:
+        resolved = Path(str(source_value)).resolve(strict=True)
+    except (OSError, ValueError) as exc:
+        raise HTTPException(status_code=404, detail="The source video is unavailable.") from exc
+
+    allowed_roots = (
+        (REPO_ROOT / "data" / "uploads").resolve(),
+        (REPO_ROOT / "data" / "input_videos").resolve(),
+    )
+    if not any(resolved.is_relative_to(root) for root in allowed_roots):
+        raise HTTPException(status_code=403, detail="The source video path is outside managed storage.")
+    if not resolved.is_file():
+        raise HTTPException(status_code=404, detail="The source video is unavailable.")
+
+    media_type = mimetypes.guess_type(resolved.name)[0] or "application/octet-stream"
+    return FileResponse(
+        resolved,
+        media_type=media_type,
+        headers={
+            "Accept-Ranges": "bytes",
+            "Cache-Control": "private, max-age=3600",
+            "Content-Disposition": f'inline; filename="{resolved.name}"',
+        },
+    )
 
 
 @app.delete("/videos/{video_id}")
@@ -530,6 +573,22 @@ async def get_frame_validation(video_id: str):
 @app.get("/visual-artifacts/{video_id}")
 async def get_visual_artifacts(video_id: str):
     return _get_manifest_artifact(video_id, "visual_artifacts_path")
+
+
+@app.get("/ocr/{video_id}")
+async def get_ocr(video_id: str):
+    return _get_manifest_artifact(video_id, "ocr_path")
+
+
+@app.get("/speakers/{video_id}")
+async def get_speakers(video_id: str):
+    return _get_manifest_artifact(video_id, "speakers_path")
+
+
+@app.get("/audio-events/{video_id}")
+async def get_audio_events(video_id: str):
+    return _get_manifest_artifact(video_id, "audio_events_path")
+
 
 @app.get("/semantic-chunks/{video_id}")
 async def get_semantic_chunks(video_id: str):

@@ -1,5 +1,6 @@
 ﻿import { useState, useEffect } from "react";
 import { Search, SlidersHorizontal, X, Sliders, Calendar, Clock, Tag, FolderOpen } from "lucide-react";
+import type { ComponentType } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";

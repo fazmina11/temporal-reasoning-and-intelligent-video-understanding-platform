@@ -85,8 +85,14 @@ export function mapVideoSummaryToLibraryVideo(video: ApiVideoSummary, index = 0)
 }
 
 export function mapManifestToLibraryVideo(manifest: ApiManifest, index = 0): LibraryVideo {
-  const progress = manifest.processing?.progress;
-  const status = statusToUi(manifest.processing?.status || manifest.processing?.processing_status, progress);
+  const indexed = Boolean(
+    manifest.artifact_metadata?.hierarchy_index
+    && manifest.artifact_metadata?.semantic_chunk_validation
+  );
+  const progress = indexed ? 100 : manifest.processing?.progress;
+  const status = indexed
+    ? "Indexed"
+    : statusToUi(manifest.processing?.status || manifest.processing?.processing_status, progress);
   return {
     id: manifest.video_id,
     title: stripExtension(manifest.original_filename || manifest.source_filename || manifest.video_id) || manifest.video_id,
