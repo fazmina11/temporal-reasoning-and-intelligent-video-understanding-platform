@@ -21,6 +21,11 @@ def verify_evidence(
     terms = _terms(query_understanding.get("standalone_query") or query_understanding.get("raw_query") or "")
     required_modalities = set(query_understanding.get("required_modalities") or [])
 
+    # Soften modality requirements when the video lacks that data entirely
+    ocr_available = bool(artifacts.get("ocr_path") and Path(str(artifacts["ocr_path"])).is_file())
+    if not ocr_available and "ocr" in required_modalities:
+        required_modalities.discard("ocr")
+
     verified: list[dict[str, Any]] = []
     rejected: list[dict[str, Any]] = []
     reason_counts: dict[str, int] = {}
