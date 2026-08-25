@@ -42,6 +42,8 @@ sys.path.insert(0, str(REPO_ROOT / "src"))
 from src.phase1_sampling import process_video as phase1_process
 from src.phase2_audio import transcribe_video
 from src.pipeline.visual_enrichment import run_visual_enrichment
+from src.pipeline.topic_summarization import enrich_chunk_summaries, enrich_event_summaries
+from src.pipeline.ocr_cleanup import run_ocr_cleanup
 from src.phase3_indexing import create_index as phase3_index
 from src.phase4_rag import VideoRAG
 from src.pipeline.media_manifest import (
@@ -796,6 +798,23 @@ async def process_pipeline(video_id: str, video_path: str):
         processing_status[video_id]["modality_status"] = modality_result["status"]
         processing_status[video_id]["modality_errors"] = modality_result["errors"]
 
+        # Phase 2b: LLM-based OCR cleanup
+        processing_status[video_id]["status"] = "OCR cleanup"
+        processing_status[video_id]["progress"] = 50
+        processing_status[video_id]["phase"] = "ocr_cleanup"
+        try:
+            ocr_cleanup_result = await loop.run_in_executor(
+                None,
+                partial(run_ocr_cleanup, repo_root=REPO_ROOT, video_id=video_id),
+            )
+            processing_status[video_id]["ocr_cleanup"] = ocr_cleanup_result
+            logger.info("OCR cleanup result: %s", ocr_cleanup_result)
+        except Exception as e:
+            logger.warning("OCR cleanup failed (non-fatal): %s", e)
+            processing_status[video_id]["ocr_cleanup"] = {"error": str(e)}
+
+        _check_cancelled(video_id)
+
         scope_profile = await loop.run_in_executor(
             None,
             partial(
@@ -819,7 +838,35 @@ async def process_pipeline(video_id: str, video_path: str):
         processing_status[video_id]["evidence_registry_path"] = (
             registry_result.get("registry_path")
         )
-        
+
+        _check_cancelled(video_id)
+        # Enrich chunk and event summaries with LLM topic labels
+        processing_status[video_id]["status"] = "Topic summarization"
+        processing_status[video_id]["progress"] = 90
+        processing_status[video_id]["phase"] = "topic_summarization"
+        update_manifest_status(
+            repo_root=REPO_ROOT,
+            video_id=video_id,
+            status="processing",
+            progress=90,
+            current_phase="topic_summarization",
+        )
+        try:
+            chunk_summary_result = await loop.run_in_executor(
+                None,
+                partial(enrich_chunk_summaries, repo_root=REPO_ROOT, video_id=video_id),
+            )
+            event_summary_result = await loop.run_in_executor(
+                None,
+                partial(enrich_event_summaries, repo_root=REPO_ROOT, video_id=video_id),
+            )
+            processing_status[video_id]["topic_summarization"] = {
+                "chunks": chunk_summary_result,
+                "events": event_summary_result,
+            }
+        except Exception as e:
+            logger.warning(f"Topic summarization failed (non-fatal): {e}")
+
         _check_cancelled(video_id)
         # Phase 2: Visual Enrichment — send frames to Gemini VLM
         processing_status[video_id]["status"] = "Phase 2: Visual Analysis (Gemini)"
