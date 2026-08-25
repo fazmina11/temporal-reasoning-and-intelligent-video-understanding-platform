@@ -81,6 +81,18 @@ class ChromaDenseRetriever(RetrieverAdapter):
 
 def _visual_summary(expanded: dict[str, Any]) -> str:
     records = expanded.get("visual_evidence") or []
+    # Use enriched VLM visual summaries if available
+    enriched_parts: list[str] = []
+    for record in records:
+        vs = record.get("visual_summary") or ""
+        if vs:
+            enriched_parts.append(vs)
+        ost = record.get("on_screen_text") or ""
+        if ost:
+            enriched_parts.append(f"On-screen text: {ost}")
+    if enriched_parts:
+        return " ".join(enriched_parts)
+    # Fallback to frame/clip count
     frame_count = sum(len(record.get("frame_references", [])) for record in records)
     clip_count = len(expanded.get("clip_paths") or [])
     if frame_count or clip_count:
