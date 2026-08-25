@@ -69,7 +69,7 @@ class LocalVisualRetriever(RetrieverAdapter):
                     parent_event_id=(chunk or {}).get("parent_event_id"),
                     text=(chunk or {}).get("transcript_text"),
                     transcript=(chunk or {}).get("transcript_text"),
-                    visual_summary=f"{len(record.get('frame_references', []))} representative visual frames attached.",
+                    visual_summary=_enriched_visual_summary(record),
                     media_refs={
                         "frames": [frame.get("frame_id") for frame in record.get("frame_references", [])],
                         "clip": (record.get("clip") or {}).get("clip_path_relative"),
@@ -95,6 +95,25 @@ class PlaceholderModalityRetriever(RetrieverAdapter):
         query_understanding: dict[str, Any],
     ) -> list[dict[str, Any]]:
         return []
+
+
+def _enriched_visual_summary(record: dict[str, Any]) -> str:
+    """Extract the enriched visual summary from a visual artifact record."""
+    # Use the VLM-enriched visual_summary if available
+    if record.get("visual_summary"):
+        parts = [record["visual_summary"]]
+        # Add on-screen text if present
+        if record.get("on_screen_text"):
+            parts.append(f"On-screen text: {record['on_screen_text']}")
+        # Add diagram type if not generic
+        if record.get("diagram_type") and record["diagram_type"] != "other":
+            parts.append(f"Content type: {record['diagram_type']}")
+        return " ".join(parts)
+    # Fallback to frame count description
+    frame_count = len(record.get("frame_references", []))
+    if frame_count:
+        return f"{frame_count} representative visual frames attached."
+    return ""
 
 
 def _terms(text: str) -> set[str]:
