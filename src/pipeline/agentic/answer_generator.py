@@ -2,28 +2,20 @@ from __future__ import annotations
 
 import os
 import re
+import logging
 from typing import Any
 
-try:
-    from google import genai
-    from google.genai import types as genai_types
-except ImportError:
-    genai = None
-    genai_types = None
-
+from src.pipeline.providers import call_llm
 from src.pipeline.knowledge_reconstruction import is_explanatory_query
 
 
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3-flash-preview")
+logger = logging.getLogger("answer_generator")
 
 
 
 class GroundedAnswerGenerator:
     def __init__(self) -> None:
-        self.client = None
-        api_key = os.getenv("GEMINI_API_KEY")
-        if genai is not None and genai_types is not None and api_key:
-            self.client = genai.Client(api_key=api_key)
+        pass  # Multi-provider client handles connections
 
     def generate(self, evidence_packet: dict[str, Any]) -> dict[str, Any]:
         if not evidence_packet.get("verified_evidence"):
@@ -32,45 +24,34 @@ class GroundedAnswerGenerator:
                 "fallback_used": True,
                 "model": "local_no_evidence",
             }
-        if self.client is None:
-            return self._local_answer(
-                evidence_packet,
-                fallback_used=False,
-                model="local_grounded",
-                provider_fallback_used=False,
+        # Try multi-provider LLM (Groq primary, Gemini fallback)
+        # Ensure question field exists in the packet
+        if 'question' not in evidence_packet:
+            evidence_packet['question'] = (
+                evidence_packet.get('query_understanding', {}).get('standalone_query')
+                or evidence_packet.get('query_understanding', {}).get('raw_query')
+                or ''
             )
-        try:
-            response = self.client.models.generate_content(
-                model=GEMINI_MODEL,
-                contents=self._prompt(evidence_packet),
-                config=genai_types.GenerateContentConfig(
-                    temperature=0.1, max_output_tokens=1200
-                ),
-            )
-            answer = str(response.text or "").strip()
-            if not answer:
-                return self._local_answer(
-                    evidence_packet,
-                    fallback_used=False,
-                    model="local_empty_model_response",
-                    provider_fallback_used=True,
-                )
+        answer_text = call_llm(
+            prompt=self._prompt(evidence_packet),
+            max_tokens=1200,
+            temperature=0.1,
+        )
+        if answer_text and answer_text.strip():
             return {
-                "answer": _strip_paths(answer),
+                "answer": _strip_paths(answer_text.strip()),
                 "fallback_used": False,
                 "provider_fallback_used": False,
                 "citation_preserving": True,
-                "model": GEMINI_MODEL,
+                "model": "multi_provider",
             }
-        except Exception as exc:
-            fallback = self._local_answer(
-                evidence_packet,
-                fallback_used=False,
-                model="local_gemini_error",
-                provider_fallback_used=True,
-            )
-            fallback["error"] = str(exc)
-            return fallback
+        # Fallback to local answer if LLM fails
+        return self._local_answer(
+            evidence_packet,
+            fallback_used=False,
+            model="local_fallback",
+            provider_fallback_used=True,
+        )
 
     def revise(self, evidence_packet: dict[str, Any], verification: dict[str, Any]) -> dict[str, Any]:
         supported_ids = {claim.get("required_citation") for claim in verification.get("claims", []) if claim.get("label") == "supported"}
@@ -84,7 +65,7 @@ class GroundedAnswerGenerator:
         evidence = [
             item
             for item in evidence_packet.get("verified_evidence", [])
-            if item["citation_id"] in supported_ids
+            if _cite_id(item) in supported_ids
         ]
         revised_packet = {**evidence_packet, "verified_evidence": evidence}
         return self._local_answer(
@@ -104,8 +85,9 @@ class GroundedAnswerGenerator:
             ocr_part = ""
             if item.get("ocr_text"):
                 ocr_part = " OCR: " + " ".join(item["ocr_text"])
+            cite_id = item.get('citation_id') or item.get('candidate_id', 'unknown')
             evidence_lines.append(
-                f"[{item['citation_id']}] ({ts}) {text_part}"
+                f"[{cite_id}] ({ts}) {text_part}"
                 + (f" Visual: {visual_part}" if visual_part else "")
                 + ocr_part
             )
@@ -179,31 +161,31 @@ class GroundedAnswerGenerator:
         for point in content_points:
             ts = format_ms(point["start_ms"])
             text = point["text"]
-            citation = point["citation_id"]
+            citation = point.get("candidate_id", "S1")
             cited_ids.add(citation)
             answer_parts.append(f"At {ts}, {text} [{citation}]")
 
         # If we have visual-only evidence, add those descriptions
         for item in evidence:
             visual = item.get("visual_summary", "")
-            if visual and item["citation_id"] not in cited_ids:
+            if visual and _cite_id(item) not in cited_ids:
                 ts = format_ms(item["start_ms"])
-                cited_ids.add(item["citation_id"])
-                answer_parts.append(f"At {ts}, visually: {visual[:200]} [{item['citation_id']}]")
+                cited_ids.add(_cite_id(item))
+                answer_parts.append(f"At {ts}, visually: {visual[:200]} [{_cite_id(item)}]")
 
         # If we didn't get enough from content points, fall back to best excerpts
         if len(answer_parts) < 2:
             for item in evidence[:5]:
-                if item["citation_id"] not in cited_ids:
+                if _cite_id(item) not in cited_ids:
                     text = item.get("text") or item.get("visual_summary") or ""
                     if text:
                         excerpt = _best_supported_excerpt(text, question, limit=200)
                         if excerpt:
                             ts = format_ms(item["start_ms"])
                             answer_parts.append(
-                                f"At {ts}: {excerpt} [{item['citation_id']}]"
+                                f"At {ts}: {excerpt} [{_cite_id(item)}]"
                             )
-                            cited_ids.add(item["citation_id"])
+                            cited_ids.add(_cite_id(item))
 
         answer = ". ".join(answer_parts) if answer_parts else _build_single_answer(evidence[0], question)
 
@@ -247,7 +229,7 @@ class GroundedAnswerGenerator:
             packet.get("question", ""),
         )
         text = _as_single_claim(text)
-        answer = f"At around {timestamp}, the video evidence says: {text} [{item['citation_id']}]."
+        answer = f"At around {timestamp}, the video evidence says: {text} [{_cite_id(item)}]."
 
         question = packet.get("question", "")
         if question and is_explanatory_query(question):
@@ -257,7 +239,7 @@ class GroundedAnswerGenerator:
                 concepts = reconstruction.learning_path.ordered_concepts
                 if len(concepts) > 1:
                     chain = " -> ".join(concepts)
-                    answer = f"Prerequisite Learning Path: {chain} [{item['citation_id']}].\n\n{answer}"
+                    answer = f"Prerequisite Learning Path: {chain} [{_cite_id(item)}].\n\n{answer}"
             except Exception:
                 pass
 
@@ -284,7 +266,7 @@ def _build_evidence_timeline(evidence: list[dict[str, Any]]) -> str:
     for item in evidence[:10]:
         ts = format_ms(item["start_ms"])
         text = (item.get("text") or item.get("visual_summary") or "")[:80]
-        entries.append(f"{item['citation_id']}@{ts}: {text}")
+        entries.append(f"{_cite_id(item)}@{ts}: {text}")
     return " | ".join(entries)
 
 
@@ -321,7 +303,7 @@ def _extract_content_points(
             "start_ms": item.get("start_ms", 0),
             "end_ms": item.get("end_ms", 0),
             "text": excerpt,
-            "citation_id": item.get("citation_id", ""),
+            "citation_id": item.get("citation_id") or item.get("candidate_id", ""),
             "relevance": relevance,
             "source_type": item.get("source_type", "unknown"),
         })
@@ -349,7 +331,7 @@ def _build_single_answer(item: dict[str, Any], question: str) -> str:
     timestamp = format_ms(item.get("start_ms", 0))
     text = item.get("text") or item.get("visual_summary") or "evidence available"
     excerpt = _best_supported_excerpt(text, question, limit=300)
-    citation = item.get("citation_id", "S1")
+    citation = item.get("citation_id") or item.get("candidate_id", "S1")
     if excerpt:
         return f"At {timestamp}: {excerpt} [{citation}]"
     return f"Evidence found at {timestamp} [{citation}]"
@@ -438,6 +420,11 @@ def _answer_stem(term: str) -> str:
         if len(term) > len(suffix) + 3 and term.endswith(suffix):
             return term[: -len(suffix)]
     return term
+
+
+def _cite_id(item: dict[str, Any]) -> str:
+    """Get citation ID from an evidence item (supports both old and new formats)."""
+    return item.get('citation_id') or item.get('candidate_id', 'S1')
 
 
 def _as_single_claim(text: str) -> str:
