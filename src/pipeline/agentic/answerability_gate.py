@@ -97,17 +97,29 @@ def _missing_required_modalities(
     missing = sorted(required - evidence_types)
     if not missing:
         return []
-    reasons = verification_summary.get("rejection_reason_counts") or {}
-    reason_text = " ".join(reasons)
-    warning_text = " ".join(str(warning) for warning in verification_summary.get("retrieval_warnings") or [])
+
+    # Check if any modality is completely unavailable for this video
+    # (artifact file doesn't exist at all) — don't block on those
     attempt_text = " ".join(
         " ".join(str(item) for item in (attempt.get("readiness") or {}).get("missing_artifacts", []))
         for attempt in verification_summary.get("retrieval_attempts") or []
     )
+    unavailable_modalities = set()
+    for modality in missing:
+        artifact_key = _modality_artifact_key(modality)
+        # If the artifact is missing from ALL retrieval attempts, the modality is unavailable
+        if f"{artifact_key}" in attempt_text:
+            unavailable_modalities.add(modality)
+
+    # Only block on modalities whose data actually exists for this video
+    reasons = verification_summary.get("rejection_reason_counts") or {}
+    reason_text = " ".join(reasons)
+    warning_text = " ".join(str(warning) for warning in verification_summary.get("retrieval_warnings") or [])
     return [
         modality
         for modality in missing
-        if (
+        if modality not in unavailable_modalities
+        and (
             f"missing_{modality}_artifact" in reason_text
             or modality in warning_text
             or _modality_artifact_key(modality) in warning_text
