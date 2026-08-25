@@ -41,7 +41,7 @@ sys.path.insert(0, str(REPO_ROOT / "src"))
 # Import existing pipeline phases
 from src.phase1_sampling import process_video as phase1_process
 from src.phase2_audio import transcribe_video
-from src.phase2_visual import run_phase2_visual as phase2_enrich
+from src.pipeline.visual_enrichment import run_visual_enrichment
 from src.phase3_indexing import create_index as phase3_index
 from src.phase4_rag import VideoRAG
 from src.pipeline.media_manifest import (
@@ -821,7 +821,7 @@ async def process_pipeline(video_id: str, video_path: str):
         )
         
         _check_cancelled(video_id)
-        # Phase 2: Visual Enrichment
+        # Phase 2: Visual Enrichment — send frames to Gemini VLM
         processing_status[video_id]["status"] = "Phase 2: Visual Analysis (Gemini)"
         processing_status[video_id]["progress"] = 92
         processing_status[video_id]["phase"] = "visual_analysis"
@@ -832,7 +832,15 @@ async def process_pipeline(video_id: str, video_path: str):
             progress=92,
             current_phase="visual_analysis",
         )
-        await loop.run_in_executor(None, phase2_enrich)
+        enrichment_result = await loop.run_in_executor(
+            None,
+            partial(
+                run_visual_enrichment,
+                repo_root=REPO_ROOT,
+                video_id=video_id,
+            ),
+        )
+        processing_status[video_id]["visual_enrichment"] = enrichment_result
         
         _check_cancelled(video_id)
         # Phase 3: Indexing
