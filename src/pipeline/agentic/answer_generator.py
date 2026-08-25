@@ -43,7 +43,9 @@ class GroundedAnswerGenerator:
             response = self.client.models.generate_content(
                 model=GEMINI_MODEL,
                 contents=self._prompt(evidence_packet),
-                config=genai_types.GenerateContentConfig(temperature=0.1, max_output_tokens=800),
+                config=genai_types.GenerateContentConfig(
+                    temperature=0.1, max_output_tokens=1200
+                ),
             )
             answer = str(response.text or "").strip()
             if not answer:
@@ -93,19 +95,41 @@ class GroundedAnswerGenerator:
         )
 
     def _prompt(self, packet: dict[str, Any]) -> str:
+        """Build a rich prompt that encourages synthesizing multiple evidence items."""
         evidence_lines = []
         for item in packet.get("verified_evidence", []):
+            ts = f"{format_ms(item['start_ms'])}-{format_ms(item['end_ms'])}"
+            text_part = item.get("text", "") or ""
+            visual_part = item.get("visual_summary", "") or ""
+            ocr_part = ""
+            if item.get("ocr_text"):
+                ocr_part = " OCR: " + " ".join(item["ocr_text"])
             evidence_lines.append(
-                f"[{item['citation_id']}] {format_ms(item['start_ms'])}-{format_ms(item['end_ms'])}: "
-                f"{item.get('text', '')} Visual: {item.get('visual_summary', '')}"
+                f"[{item['citation_id']}] ({ts}) {text_part}"
+                + (f" Visual: {visual_part}" if visual_part else "")
+                + ocr_part
             )
+
+        timeline = packet.get("temporal_context", {}).get("timeline_summary", "")
+        # Build a compact timeline of evidence timestamps
+        evidence_timeline = _build_evidence_timeline(
+            packet.get("verified_evidence", [])
+        )
+
         return (
-            "Answer the video question using only the evidence below.\n"
-            "Every factual video claim must cite one or more evidence IDs like [S1].\n"
-            "Include the most useful timestamp. If evidence is partial, say so.\n"
-            "Do not mention filesystem paths.\n\n"
-            f"Question: {packet['question']}\n"
-            f"Timeline context: {packet.get('temporal_context', {}).get('timeline_summary', '')}\n\n"
+            "You are answering a question about a video using ONLY the evidence below.\n\n"
+            "INSTRUCTIONS:\n"
+            "- Synthesize information from MULTIPLE evidence items to give a comprehensive answer.\n"
+            "- Cover ALL relevant timestamps and moments, not just the first one.\n"
+            "- Every factual claim MUST cite evidence IDs like [S1], [S2], etc.\n"
+            "- Include timestamps for each key point (e.g., at 0:07, at 1:32).\n"
+            "- If different evidence items describe different aspects, combine them into a complete picture.\n"
+            "- If evidence is partial or contradictory, acknowledge it.\n"
+            "- Do not mention filesystem paths.\n"
+            "- Be specific and detailed. List individual items, timestamps, and values when available.\n\n"
+            f"Question: {packet['question']}\n\n"
+            f"Timeline context: {timeline}\n\n"
+            f"Evidence timeline: {evidence_timeline}\n\n"
             "Evidence:\n"
             + "\n".join(evidence_lines)
         )
@@ -118,35 +142,87 @@ class GroundedAnswerGenerator:
         model: str,
         provider_fallback_used: bool = False,
     ) -> dict[str, Any]:
+        """Build a comprehensive answer from multiple verified evidence items."""
         evidence = packet.get("verified_evidence", [])
-        first = evidence[0]
-        timestamp = format_ms(first["start_ms"])
-        text = _best_supported_excerpt(
-            first.get("text") or first.get("visual_summary") or "The retrieved evidence is available for this moment.",
-            packet.get("question", ""),
-        )
-        text = _as_single_claim(text)
-        answer = (
-            f"At around {timestamp}, the video evidence says: {text} [{first['citation_id']}]."
-        )
         question = packet.get("question", "")
+
+        if not evidence:
+            return {
+                "answer": "I could not find enough reliable evidence in this video to answer that question.",
+                "fallback_used": fallback_used,
+                "provider_fallback_used": provider_fallback_used,
+                "citation_preserving": True,
+                "model": model,
+            }
+
+        # If only one evidence item, use the simple path
+        if len(evidence) == 1:
+            return self._single_evidence_answer(
+                evidence[0], packet, fallback_used=fallback_used,
+                model=model, provider_fallback_used=provider_fallback_used,
+            )
+
+        # Multi-evidence synthesis
+        answer_parts = []
+        cited_ids = set()
+
+        # Group evidence by source type for structured reporting
+        by_type: dict[str, list[dict[str, Any]]] = {}
+        for item in evidence:
+            src_type = item.get("evidence_type") or item.get("source_type") or "unknown"
+            by_type.setdefault(src_type, []).append(item)
+
+        # Extract unique content points across all evidence
+        content_points = _extract_content_points(evidence, question)
+        
+        # Build answer from content points
+        for point in content_points:
+            ts = format_ms(point["start_ms"])
+            text = point["text"]
+            citation = point["citation_id"]
+            cited_ids.add(citation)
+            answer_parts.append(f"At {ts}, {text} [{citation}]")
+
+        # If we have visual-only evidence, add those descriptions
+        for item in evidence:
+            visual = item.get("visual_summary", "")
+            if visual and item["citation_id"] not in cited_ids:
+                ts = format_ms(item["start_ms"])
+                cited_ids.add(item["citation_id"])
+                answer_parts.append(f"At {ts}, visually: {visual[:200]} [{item['citation_id']}]")
+
+        # If we didn't get enough from content points, fall back to best excerpts
+        if len(answer_parts) < 2:
+            for item in evidence[:5]:
+                if item["citation_id"] not in cited_ids:
+                    text = item.get("text") or item.get("visual_summary") or ""
+                    if text:
+                        excerpt = _best_supported_excerpt(text, question, limit=200)
+                        if excerpt:
+                            ts = format_ms(item["start_ms"])
+                            answer_parts.append(
+                                f"At {ts}: {excerpt} [{item['citation_id']}]"
+                            )
+                            cited_ids.add(item["citation_id"])
+
+        answer = ". ".join(answer_parts) if answer_parts else _build_single_answer(evidence[0], question)
+
+        # Add explanatory learning path for explanatory queries
         if question and is_explanatory_query(question):
             try:
                 from src.pipeline.knowledge_reconstruction import reconstruct_knowledge
-
                 reconstruction = reconstruct_knowledge(question, evidence)
                 concepts = reconstruction.learning_path.ordered_concepts
                 if len(concepts) > 1:
                     chain = " -> ".join(concepts)
-                    answer = (
-                        f"Prerequisite Learning Path: {chain} [{first['citation_id']}].\n\n"
-                        + answer
-                    )
+                    answer = f"Prerequisite Learning Path: {chain}.\n\n{answer}"
             except Exception:
                 pass
+
         notes = packet.get("missing_evidence_notes") or []
         if notes:
             answer += "\n\nLimitations: " + "; ".join(notes)
+
         return {
             "answer": _strip_paths(answer),
             "fallback_used": fallback_used,
@@ -155,6 +231,128 @@ class GroundedAnswerGenerator:
             "model": model,
         }
 
+    def _single_evidence_answer(
+        self,
+        item: dict[str, Any],
+        packet: dict[str, Any],
+        *,
+        fallback_used: bool,
+        model: str,
+        provider_fallback_used: bool = False,
+    ) -> dict[str, Any]:
+        """Handle the case where only one evidence item exists."""
+        timestamp = format_ms(item["start_ms"])
+        text = _best_supported_excerpt(
+            item.get("text") or item.get("visual_summary") or "The retrieved evidence is available for this moment.",
+            packet.get("question", ""),
+        )
+        text = _as_single_claim(text)
+        answer = f"At around {timestamp}, the video evidence says: {text} [{item['citation_id']}]."
+
+        question = packet.get("question", "")
+        if question and is_explanatory_query(question):
+            try:
+                from src.pipeline.knowledge_reconstruction import reconstruct_knowledge
+                reconstruction = reconstruct_knowledge(question, [item])
+                concepts = reconstruction.learning_path.ordered_concepts
+                if len(concepts) > 1:
+                    chain = " -> ".join(concepts)
+                    answer = f"Prerequisite Learning Path: {chain} [{item['citation_id']}].\n\n{answer}"
+            except Exception:
+                pass
+
+        notes = packet.get("missing_evidence_notes") or []
+        if notes:
+            answer += "\n\nLimitations: " + "; ".join(notes)
+
+        return {
+            "answer": _strip_paths(answer),
+            "fallback_used": fallback_used,
+            "provider_fallback_used": provider_fallback_used,
+            "citation_preserving": True,
+            "model": model,
+        }
+
+
+# ── Helpers ───────────────────────────────────────────────────────────────────
+
+def _build_evidence_timeline(evidence: list[dict[str, Any]]) -> str:
+    """Build a compact timeline string from evidence items."""
+    if not evidence:
+        return ""
+    entries = []
+    for item in evidence[:10]:
+        ts = format_ms(item["start_ms"])
+        text = (item.get("text") or item.get("visual_summary") or "")[:80]
+        entries.append(f"{item['citation_id']}@{ts}: {text}")
+    return " | ".join(entries)
+
+
+def _extract_content_points(
+    evidence: list[dict[str, Any]], question: str
+) -> list[dict[str, Any]]:
+    """Extract the most relevant content points from evidence items."""
+    terms = _answer_terms(question)
+    points = []
+
+    for item in evidence:
+        # Combine all text sources
+        all_text = " ".join(
+            str(item.get(key, ""))
+            for key in ("text", "visual_summary", "transcript")
+            if item.get(key)
+        )
+        if not all_text.strip():
+            continue
+
+        # Score relevance to question
+        normalized = all_text.lower()
+        if terms:
+            relevance = sum(1 for term in terms if term in normalized) / len(terms)
+        else:
+            relevance = 0.3  # Default relevance if no terms
+
+        # Extract the most relevant excerpt
+        excerpt = _best_supported_excerpt(all_text, question, limit=300)
+        if not excerpt:
+            continue
+
+        points.append({
+            "start_ms": item.get("start_ms", 0),
+            "end_ms": item.get("end_ms", 0),
+            "text": excerpt,
+            "citation_id": item.get("citation_id", ""),
+            "relevance": relevance,
+            "source_type": item.get("source_type", "unknown"),
+        })
+
+    # Sort by relevance, then by timestamp for chronological order
+    points.sort(key=lambda p: (-p["relevance"], p["start_ms"]))
+
+    # Deduplicate: keep only the best excerpt per timestamp range
+    deduped = []
+    seen_ranges: set[tuple[int, int]] = set()
+    for point in points:
+        # Check if this timestamp range is already covered
+        time_key = (point["start_ms"] // 5000, point["end_ms"] // 5000)
+        if time_key not in seen_ranges or point["relevance"] > 0.5:
+            deduped.append(point)
+            seen_ranges.add(time_key)
+
+    # Sort chronologically for the final answer
+    deduped.sort(key=lambda p: p["start_ms"])
+    return deduped
+
+
+def _build_single_answer(item: dict[str, Any], question: str) -> str:
+    """Build a single-evidence answer as last resort."""
+    timestamp = format_ms(item.get("start_ms", 0))
+    text = item.get("text") or item.get("visual_summary") or "evidence available"
+    excerpt = _best_supported_excerpt(text, question, limit=300)
+    citation = item.get("citation_id", "S1")
+    if excerpt:
+        return f"At {timestamp}: {excerpt} [{citation}]"
+    return f"Evidence found at {timestamp} [{citation}]"
 
 
 def format_ms(ms: int) -> str:
@@ -192,9 +390,13 @@ def _best_supported_excerpt(text: str, question: str, limit: int = 420) -> str:
 
     terms = _answer_terms(question)
     if not terms:
-        return _first_supported_sentence(compact, limit=limit)
+        # No question terms — take the longest/most informative sentence
+        best = max(sentences, key=len)
+        clipped = best if len(best) <= limit else best[:limit].rsplit(" ", 1)[0]
+        return _sentence_stem(clipped)
+
     comparison = bool(re.search(r"\b(?:compare|compared|comparison|versus|vs)\b", question, re.I))
-    max_sentences = 3 if comparison else 1
+    max_sentences = 3 if comparison else 2  # Allow up to 2 sentences for richer answers
     best: tuple[float, int, int] | None = None
     best_text = sentences[0]
     for start_index in range(len(sentences)):
