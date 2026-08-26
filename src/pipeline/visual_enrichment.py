@@ -183,7 +183,7 @@ def run_visual_enrichment(
 
     # Check provider status
     status = get_provider_status()
-    logger.info("Provider status: %s", {k: {"exhausted": v["quota_exhausted"], "used": v["requests_today"]} for k, v in status.items()})
+    logger.info("Provider status: %s", {k: {"exhausted": v.get("quota_exhausted"), "keys_available": v.get("available_keys", v.get("requests_today"))} for k, v in status.items()})
 
     logger.info(
         "👁️  Starting VLM visual enrichment for %s (%d records)...",
