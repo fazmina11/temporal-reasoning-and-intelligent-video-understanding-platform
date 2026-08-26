@@ -129,34 +129,127 @@ def _parse_json_response(raw: str) -> dict[str, Any]:
     return {}
 
 
-# ── Groq Provider ───────────────────────────────────────────────────────────
+# ── Groq Provider (Multi-Key Rotation) ──────────────────────────────────────
 
-def _call_groq_text(
-    config: ProviderConfig,
-    prompt: str,
-    *,
-    system: str = "",
-    max_tokens: int = 1024,
-    temperature: float = 0.3,
-) -> str | None:
-    """Call Groq for text-only completion."""
-    try:
-        from groq import Groq
-    except ImportError:
-        raise ImportError("groq is required. Install with: pip install groq")
+def _get_groq_api_keys() -> list[str]:
+    """Collect all available Groq API keys from environment.
+    
+    Supports GROQ_API_KEY, GROQ_API_KEY1, GROQ_API_KEY2, GROQ_API_KEY3, etc.
+    Returns them in order so the first key is tried first.
+    """
+    keys = []
+    # Single key (legacy)
+    single = os.getenv("GROQ_API_KEY")
+    if single:
+        keys.append(single)
+    # Numbered keys
+    for i in range(1, 10):
+        k = os.getenv(f"GROQ_API_KEY{i}")
+        if k and k not in keys:
+            keys.append(k)
+    return keys
 
-    api_key = os.getenv("GROQ_API_KEY")
-    if not api_key:
-        raise EnvironmentError("GROQ_API_KEY not set in .env")
 
-    state = _get_state(config.name)
+def _get_key_state(key_hash: str) -> ProviderState:
+    """Get exhaustion state for a specific API key (identified by last8 chars)."""
+    state_key = f"groq_key_{key_hash}"
+    return _get_state(state_key)
+
+
+def _is_key_available(key: str) -> bool:
+    """Check if a Groq API key is not rate-limited."""
+    key_hash = key[-8:]
+    state = _get_key_state(key_hash)
     if state.quota_exhausted:
-        return None
-    if state.requests_this_minute >= config.rpm_limit:
-        logger.warning("Groq: RPM limit reached (%d), skipping", config.rpm_limit)
+        return False
+    if state.requests_this_minute >= 30:  # RPM limit per key
+        return False
+    return True
+
+
+def _mark_key_exhausted(key: str, err_str: str) -> None:
+    """Mark a specific Groq API key as rate-limited."""
+    key_hash = key[-8:]
+    state = _get_key_state(key_hash)
+    state.quota_exhausted = True
+    state.last_error = err_str[:200]
+
+
+def _record_key_usage(key: str) -> None:
+    """Record a successful request for a specific Groq API key."""
+    key_hash = key[-8:]
+    state = _get_key_state(key_hash)
+    state.requests_today += 1
+    state.requests_this_minute += 1
+
+
+def _try_groq_keys(
+    func_name: str,
+    config: ProviderConfig,
+    *args,
+    **kwargs,
+) -> Any:
+    """Try all available Groq API keys for a given function.
+    
+    Rotates through keys until one succeeds or all are exhausted.
+    """
+    keys = _get_groq_api_keys()
+    if not keys:
+        logger.error("No Groq API keys found in environment")
         return None
 
-    client = Groq(api_key=api_key)
+    # Global state check
+    global_state = _get_state(config.name)
+    if global_state.quota_exhausted:
+        # Check if any individual key is still available
+        if not any(_is_key_available(k) for k in keys):
+            return None
+        # At least one key available — reset global state and try
+        global_state.quota_exhausted = False
+
+    last_error = None
+    for key in keys:
+        if not _is_key_available(key):
+            continue
+
+        try:
+            from groq import Groq
+        except ImportError:
+            raise ImportError("groq is required. Install with: pip install groq")
+
+        client = Groq(api_key=key)
+        try:
+            if func_name == "text":
+                result = _execute_groq_text(client, config, *args, **kwargs)
+            else:
+                result = _execute_groq_vision(client, config, *args, **kwargs)
+            _record_key_usage(key)
+            return result
+        except Exception as exc:
+            err_str = str(exc)
+            last_error = err_str[:200]
+            if "429" in err_str or "RESOURCE_EXHAUSTED" in err_str or "rate_limit" in err_str:
+                _mark_key_exhausted(key, err_str)
+                key_masked = key[:8] + "..." + key[-4:]
+                logger.warning("Groq key %s rate-limited, trying next key...", key_masked)
+                continue
+            logger.error("Groq API error (key ...%s): %s", key[-4:], err_str[:100])
+            return None
+
+    # All keys exhausted
+    all_keys_masked = [k[:8] + "..." + k[-4:] for k in keys]
+    logger.warning("All %d Groq keys exhausted: %s", len(keys), all_keys_masked)
+    global_state.quota_exhausted = True
+    global_state.last_error = last_error or "all keys exhausted"
+    return None
+
+
+def _execute_groq_text(
+    client, config: ProviderConfig,
+    prompt: str, *, system: str = "",
+    max_tokens: int = 1024, temperature: float = 0.3,
+) -> str:
+    """Execute a text completion with an already-created Groq client."""
     messages = []
     if system:
         messages.append({"role": "system", "content": system})
@@ -171,51 +264,17 @@ def _call_groq_text(
     if config.reasoning_effort:
         kwargs["reasoning_effort"] = config.reasoning_effort
 
-    try:
-        resp = client.chat.completions.create(**kwargs)
-        state.requests_today += 1
-        state.requests_this_minute += 1
-        content = resp.choices[0].message.content or ""
-        return _strip_thinking_tags(content)
-    except Exception as exc:
-        err_str = str(exc)
-        if "429" in err_str or "RESOURCE_EXHAUSTED" in err_str or "rate_limit" in err_str:
-            state.quota_exhausted = True
-            state.last_error = err_str[:200]
-            logger.warning("Groq quota exhausted: %s", err_str[:100])
-            return None
-        logger.error("Groq API error: %s", err_str[:200])
-        state.last_error = err_str[:200]
-        return None
+    resp = client.chat.completions.create(**kwargs)
+    content = resp.choices[0].message.content or ""
+    return _strip_thinking_tags(content)
 
 
-def _call_groq_vision(
-    config: ProviderConfig,
-    image_b64: str,
-    prompt: str,
-    *,
-    max_tokens: int = 1024,
-    temperature: float = 0.3,
-) -> dict[str, Any] | None:
-    """Call Groq with vision (image + text)."""
-    try:
-        from groq import Groq
-    except ImportError:
-        raise ImportError("groq is required. Install with: pip install groq")
-
-    api_key = os.getenv("GROQ_API_KEY")
-    if not api_key:
-        raise EnvironmentError("GROQ_API_KEY not set in .env")
-
-    state = _get_state(config.name)
-    if state.quota_exhausted:
-        return None
-    if state.requests_this_minute >= config.rpm_limit:
-        logger.warning("Groq: RPM limit reached, skipping vision call")
-        return None
-
-    client = Groq(api_key=api_key)
-
+def _execute_groq_vision(
+    client, config: ProviderConfig,
+    image_b64: str, prompt: str, *,
+    max_tokens: int = 1024, temperature: float = 0.3,
+) -> dict[str, Any]:
+    """Execute a vision call with an already-created Groq client."""
     messages = [{
         "role": "user",
         "content": [
@@ -233,22 +292,37 @@ def _call_groq_vision(
     if config.reasoning_effort:
         kwargs["reasoning_effort"] = config.reasoning_effort
 
-    try:
-        resp = client.chat.completions.create(**kwargs)
-        state.requests_today += 1
-        state.requests_this_minute += 1
-        raw = resp.choices[0].message.content or ""
-        return _parse_json_response(raw)
-    except Exception as exc:
-        err_str = str(exc)
-        if "429" in err_str or "RESOURCE_EXHAUSTED" in err_str or "rate_limit" in err_str:
-            state.quota_exhausted = True
-            state.last_error = err_str[:200]
-            logger.warning("Groq quota exhausted: %s", err_str[:100])
-            return None
-        logger.error("Groq vision error: %s", err_str[:200])
-        state.last_error = err_str[:200]
-        return None
+    resp = client.chat.completions.create(**kwargs)
+    raw = resp.choices[0].message.content or ""
+    return _parse_json_response(raw)
+
+
+def _call_groq_text(
+    config: ProviderConfig,
+    prompt: str,
+    *,
+    system: str = "",
+    max_tokens: int = 1024,
+    temperature: float = 0.3,
+) -> str | None:
+    """Call Groq for text-only completion with multi-key rotation."""
+    result = _try_groq_keys("text", config, prompt, system=system,
+                            max_tokens=max_tokens, temperature=temperature)
+    return result if isinstance(result, str) else None
+
+
+def _call_groq_vision(
+    config: ProviderConfig,
+    image_b64: str,
+    prompt: str,
+    *,
+    max_tokens: int = 1024,
+    temperature: float = 0.3,
+) -> dict[str, Any] | None:
+    """Call Groq with vision (image + text) with multi-key rotation."""
+    result = _try_groq_keys("vision", config, image_b64, prompt,
+                            max_tokens=max_tokens, temperature=temperature)
+    return result if isinstance(result, dict) else None
 
 
 # ── Gemini Provider ─────────────────────────────────────────────────────────
@@ -443,15 +517,36 @@ def call_llm(
 
 
 def get_provider_status() -> dict[str, Any]:
-    """Return the current status of all providers."""
+    """Return the current status of all providers including per-key Groq status."""
     status = {}
-    for name in ["groq", "gemini"]:
-        state = _get_state(name)
-        status[name] = {
+    # Groq per-key status
+    keys = _get_groq_api_keys()
+    groq_keys_status = []
+    for i, key in enumerate(keys):
+        key_hash = key[-8:]
+        state = _get_key_state(key_hash)
+        groq_keys_status.append({
+            "key_index": i + 1,
+            "key_suffix": f"...{key[-4:]}",
+            "available": _is_key_available(key),
             "quota_exhausted": state.quota_exhausted,
             "requests_today": state.requests_today,
             "last_error": state.last_error,
-        }
+        })
+    groq_global = _get_state("groq")
+    status["groq"] = {
+        "quota_exhausted": groq_global.quota_exhausted,
+        "total_keys": len(keys),
+        "available_keys": sum(1 for k in keys if _is_key_available(k)),
+        "keys": groq_keys_status,
+    }
+    # Gemini status
+    gemini_state = _get_state("gemini")
+    status["gemini"] = {
+        "quota_exhausted": gemini_state.quota_exhausted,
+        "requests_today": gemini_state.requests_today,
+        "last_error": gemini_state.last_error,
+    }
     return status
 
 
