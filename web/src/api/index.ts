@@ -6,3 +6,4 @@ export * from "./ask";
 export * from "./workspace";
 export * from "./analytics";
 export * from "./adapters";
+export * from "./health";

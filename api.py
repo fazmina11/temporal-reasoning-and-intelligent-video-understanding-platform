@@ -515,6 +515,12 @@ async def health_ready():
     return {"status": "ok", "service": "VideoSceneRAG API", "timestamp": datetime.now(timezone.utc).isoformat(), "details": {"processing_jobs": len(processing_status)}}
 
 
+@app.get("/provider-status")
+async def provider_status():
+    from src.pipeline.providers import get_provider_status
+    return get_provider_status()
+
+
 @app.get("/analytics/overview")
 async def analytics_overview():
     videos = _video_summaries()
